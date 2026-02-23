@@ -262,20 +262,35 @@ def build_pdf(parsed, pages, nome_arquivo):
         c.drawString(x0, y0, titulo_pagina[:48] + ("..." if len(titulo_pagina) > 48 else ""))
         y0 -= 0.45 * cm
         img_buf = io.BytesIO()
+        img_ok = False
+        # Cópia da figura para não mutar a original; exportação compatível com cloud (scale=1 primeiro)
         try:
-            fig.update_layout(height=fig_export_height, margin=dict(t=32, b=28, l=44, r=16))
-            fig.write_image(img_buf, format="png", scale=scale_img)
-            img_buf.seek(0)
-            img = ImageReader(img_buf)
-            iw, ih = img.getSize()
-            scale = min((cell_w - 0.2 * cm) / iw, img_h_per / ih)
-            dw, dh = iw * scale, ih * scale
-            c.drawImage(img, x0, y0 - dh, width=dw, height=dh)
-            y0 -= dh + 0.3 * cm
+            fig_export = go.Figure(fig.to_dict())
+            fig_export.update_layout(height=fig_export_height, margin=dict(t=32, b=28, l=44, r=16))
+            for scale_try in [1, scale_img]:
+                try:
+                    img_buf.seek(0)
+                    img_buf.truncate(0)
+                    fig_export.write_image(img_buf, format="png", scale=scale_try, engine="kaleido")
+                    img_buf.seek(0)
+                    img = ImageReader(img_buf)
+                    iw, ih = img.getSize()
+                    scale = min((cell_w - 0.2 * cm) / iw, img_h_per / ih)
+                    dw, dh = iw * scale, ih * scale
+                    c.drawImage(img, x0, y0 - dh, width=dw, height=dh)
+                    y0 -= dh + 0.3 * cm
+                    img_ok = True
+                    break
+                except Exception:
+                    continue
         except Exception:
+            pass
+        if not img_ok:
             c.setFont("Helvetica", 8)
-            c.drawString(x0, y0, "(Erro ao gerar gráfico)")
-            y0 -= 0.5 * cm
+            c.setFillColorRGB(0.5, 0.5, 0.5)
+            c.drawString(x0, y0 - 0.3 * cm, "(Gráfico: exportação indisponível neste ambiente)")
+            c.setFillColorRGB(0.15, 0.2, 0.3)
+            y0 -= 0.6 * cm
         box_y = y0 - meta_box_h
         box_w = cell_w - 0.2 * cm
         c.setFillColorRGB(0.94, 0.95, 0.97)
@@ -321,6 +336,12 @@ if uploaded is None:
 
 nome_arquivo = uploaded.name if hasattr(uploaded, "name") else "arquivo.csv"
 parsed = parse_filename(nome_arquivo)
+# Nordic: exibir "1ª repetição" e "2ª repetição" em vez de "Contração curta/longa"
+is_nordic = parsed.get("valid") and "nordic" in (parsed.get("teste") or "").lower()
+LABEL_1 = "1ª repetição" if is_nordic else "Contração curta"
+LABEL_2 = "2ª repetição" if is_nordic else "Contração longa"
+LABEL_1_SHORT = "1ª rep." if is_nordic else "curta"
+LABEL_2_SHORT = "2ª rep." if is_nordic else "longa"
 
 if parsed["valid"]:
     ap_display = parsed.get("aparelho_display", format_equip(parsed["aparelho"]))
@@ -368,11 +389,11 @@ with unilateral:
 if not modo_unilateral:
     colA, colB = st.columns(2)
     with colA:
-        st.markdown("**⏱️ Janela contração curta**")
-        rng_short = st.slider("Início e fim curta [s]", t_min, t_max, (float(short_s), float(short_e)), step=0.01, key="b_short")
+        st.markdown(f"**⏱️ Janela {LABEL_1}**")
+        rng_short = st.slider(f"Início e fim {LABEL_1_SHORT} [s]", t_min, t_max, (float(short_s), float(short_e)), step=0.01, key="b_short")
         t0_short, t1_short = min(rng_short[0], rng_short[1]), max(rng_short[0], rng_short[1])
         st.caption(f"Janela: {t0_short:.2f}s → {t1_short:.2f}s (Δ = {t1_short - t0_short:.2f}s)")
-        fig1 = make_trace_figure(df, time_col, l_col, r_col, t0_short, t1_short, "Contração curta", height=500)
+        fig1 = make_trace_figure(df, time_col, l_col, r_col, t0_short, t1_short, LABEL_1, height=500)
         st.plotly_chart(fig1, use_container_width=True)
         dfw1 = filter_window(df, time_col, t0_short, t1_short)
         m1 = window_metrics(dfw1, l_col, r_col)
@@ -385,11 +406,11 @@ if not modo_unilateral:
             <div class="m-item"><div class="m-label">Assim. (média)</div><div class="m-value">{m1['asym_mean']:.1f}%</div></div>
         </div>""", unsafe_allow_html=True)
     with colB:
-        st.markdown("**⏱️ Janela contração longa**")
-        rng_long = st.slider("Início e fim longa [s]", t_min, t_max, (float(long_s), float(long_e)), step=0.01, key="b_long")
+        st.markdown(f"**⏱️ Janela {LABEL_2}**")
+        rng_long = st.slider(f"Início e fim {LABEL_2_SHORT} [s]", t_min, t_max, (float(long_s), float(long_e)), step=0.01, key="b_long")
         t0_long, t1_long = min(rng_long[0], rng_long[1]), max(rng_long[0], rng_long[1])
         st.caption(f"Janela: {t0_long:.2f}s → {t1_long:.2f}s (Δ = {t1_long - t0_long:.2f}s)")
-        fig2 = make_trace_figure(df, time_col, l_col, r_col, t0_long, t1_long, "Contração longa", height=500)
+        fig2 = make_trace_figure(df, time_col, l_col, r_col, t0_long, t1_long, LABEL_2, height=500)
         st.plotly_chart(fig2, use_container_width=True)
         dfw2 = filter_window(df, time_col, t0_long, t1_long)
         m2 = window_metrics(dfw2, l_col, r_col)
@@ -408,34 +429,34 @@ else:
     st.markdown("#### 🦵 Direita")
     colR1, colR2 = st.columns(2)
     with colR1:
-        rng_r_short = st.slider("Início e fim curta Dir. [s]", t_min, t_max, (float(short_s), float(short_e)), step=0.01, key="u_short_r")
+        rng_r_short = st.slider(f"Início e fim {LABEL_1_SHORT} Dir. [s]", t_min, t_max, (float(short_s), float(short_e)), step=0.01, key="u_short_r")
         t0_short_r, t1_short_r = min(rng_r_short[0], rng_r_short[1]), max(rng_r_short[0], rng_r_short[1])
         st.caption(f"{t0_short_r:.2f}s → {t1_short_r:.2f}s")
-        fig_r_short = make_trace_figure_single(df, time_col, r_col, t0_short_r, t1_short_r, "Direita — Contração curta", COR_DIREITA)
+        fig_r_short = make_trace_figure_single(df, time_col, r_col, t0_short_r, t1_short_r, f"Direita — {LABEL_1}", COR_DIREITA)
         st.plotly_chart(fig_r_short, use_container_width=True)
         mr_short = window_metrics_single(filter_window(df, time_col, t0_short_r, t1_short_r), r_col)
         st.markdown(f"""<div class="metrics-card metrics-card-2"><div class="m-item"><div class="m-label">Pico Dir.</div><div class="m-value">{mr_short['peak']:.2f}</div></div><div class="m-item"><div class="m-label">Média Dir.</div><div class="m-value">{mr_short['mean']:.2f}</div></div></div>""", unsafe_allow_html=True)
     with colR2:
-        rng_r_long = st.slider("Início e fim longa Dir. [s]", t_min, t_max, (float(long_s), float(long_e)), step=0.01, key="u_long_r")
+        rng_r_long = st.slider(f"Início e fim {LABEL_2_SHORT} Dir. [s]", t_min, t_max, (float(long_s), float(long_e)), step=0.01, key="u_long_r")
         t0_long_r, t1_long_r = min(rng_r_long[0], rng_r_long[1]), max(rng_r_long[0], rng_r_long[1])
         st.caption(f"{t0_long_r:.2f}s → {t1_long_r:.2f}s")
-        fig_r_long = make_trace_figure_single(df, time_col, r_col, t0_long_r, t1_long_r, "Direita — Contração longa", COR_DIREITA)
+        fig_r_long = make_trace_figure_single(df, time_col, r_col, t0_long_r, t1_long_r, f"Direita — {LABEL_2}", COR_DIREITA)
         st.plotly_chart(fig_r_long, use_container_width=True)
         mr_long = window_metrics_single(filter_window(df, time_col, t0_long_r, t1_long_r), r_col)
         st.markdown(f"""<div class="metrics-card metrics-card-2"><div class="m-item"><div class="m-label">Pico Dir.</div><div class="m-value">{mr_long['peak']:.2f}</div></div><div class="m-item"><div class="m-label">Média Dir.</div><div class="m-value">{mr_long['mean']:.2f}</div></div></div>""", unsafe_allow_html=True)
     st.markdown("#### 🦵 Esquerda")
     colL1, colL2 = st.columns(2)
     with colL1:
-        rng_l_short = st.slider("Início e fim curta Esq. [s]", t_min, t_max, (float(short_s), float(short_e)), step=0.01, key="u_short_l")
+        rng_l_short = st.slider(f"Início e fim {LABEL_1_SHORT} Esq. [s]", t_min, t_max, (float(short_s), float(short_e)), step=0.01, key="u_short_l")
         t0_short_l, t1_short_l = min(rng_l_short[0], rng_l_short[1]), max(rng_l_short[0], rng_l_short[1])
-        fig_l_short = make_trace_figure_single(df, time_col, l_col, t0_short_l, t1_short_l, "Esquerda — Contração curta", COR_ESQUERDA)
+        fig_l_short = make_trace_figure_single(df, time_col, l_col, t0_short_l, t1_short_l, f"Esquerda — {LABEL_1}", COR_ESQUERDA)
         st.plotly_chart(fig_l_short, use_container_width=True)
         ml_short = window_metrics_single(filter_window(df, time_col, t0_short_l, t1_short_l), l_col)
         st.markdown(f"""<div class="metrics-card metrics-card-2"><div class="m-item"><div class="m-label">Pico Esq.</div><div class="m-value">{ml_short['peak']:.2f}</div></div><div class="m-item"><div class="m-label">Média Esq.</div><div class="m-value">{ml_short['mean']:.2f}</div></div></div>""", unsafe_allow_html=True)
     with colL2:
-        rng_l_long = st.slider("Início e fim longa Esq. [s]", t_min, t_max, (float(long_s), float(long_e)), step=0.01, key="u_long_l")
+        rng_l_long = st.slider(f"Início e fim {LABEL_2_SHORT} Esq. [s]", t_min, t_max, (float(long_s), float(long_e)), step=0.01, key="u_long_l")
         t0_long_l, t1_long_l = min(rng_l_long[0], rng_l_long[1]), max(rng_l_long[0], rng_l_long[1])
-        fig_l_long = make_trace_figure_single(df, time_col, l_col, t0_long_l, t1_long_l, "Esquerda — Contração longa", COR_ESQUERDA)
+        fig_l_long = make_trace_figure_single(df, time_col, l_col, t0_long_l, t1_long_l, f"Esquerda — {LABEL_2}", COR_ESQUERDA)
         st.plotly_chart(fig_l_long, use_container_width=True)
         ml_long = window_metrics_single(filter_window(df, time_col, t0_long_l, t1_long_l), l_col)
         st.markdown(f"""<div class="metrics-card metrics-card-2"><div class="m-item"><div class="m-label">Pico Esq.</div><div class="m-value">{ml_long['peak']:.2f}</div></div><div class="m-item"><div class="m-label">Média Esq.</div><div class="m-value">{ml_long['mean']:.2f}</div></div></div>""", unsafe_allow_html=True)
@@ -446,9 +467,9 @@ if not HAS_REPORTLAB or not HAS_KALEIDO:
     st.warning("Para exportar em PDF, instale: `pip install reportlab kaleido`")
 else:
     if not modo_unilateral:
-        fig1_crop = make_figure_cropped_bilateral(df, time_col, l_col, r_col, t0_short, t1_short, "Contração curta")
-        fig2_crop = make_figure_cropped_bilateral(df, time_col, l_col, r_col, t0_long, t1_long, "Contração longa")
-        pdf_pages = [(f"Contração curta — Janela {t0_short:.2f}s a {t1_short:.2f}s", fig1_crop, m1, True), (f"Contração longa — Janela {t0_long:.2f}s a {t1_long:.2f}s", fig2_crop, m2, True)]
+        fig1_crop = make_figure_cropped_bilateral(df, time_col, l_col, r_col, t0_short, t1_short, LABEL_1)
+        fig2_crop = make_figure_cropped_bilateral(df, time_col, l_col, r_col, t0_long, t1_long, LABEL_2)
+        pdf_pages = [(f"{LABEL_1} — Janela {t0_short:.2f}s a {t1_short:.2f}s", fig1_crop, m1, True), (f"{LABEL_2} — Janela {t0_long:.2f}s a {t1_long:.2f}s", fig2_crop, m2, True)]
     else:
         fig_r_short_crop = make_figure_cropped_single(df, time_col, r_col, t0_short_r, t1_short_r, "Direita — Curta", COR_DIREITA)
         fig_r_long_crop = make_figure_cropped_single(df, time_col, r_col, t0_long_r, t1_long_r, "Direita — Longa", COR_DIREITA)
