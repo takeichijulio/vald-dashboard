@@ -242,19 +242,22 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
         n = len(pages)
     ncols = 2
     cell_w = content_w / ncols
-    header_h = 1.5 * cm if n == 4 else 1.35 * cm
+    if n == 4:
+        # Cabeçalho compacto: título + 2 linhas de arquivos + linha separadora; resto = 4 blocos na MESMA página
+        header_h = 1.2 * cm
+    else:
+        header_h = 1.35 * cm
     y_top = h - margin - header_h
     content_h = y_top - margin
     if n == 4:
-        # Uma única página: 2 linhas x 2 colunas (Arq1 | Arq2 na 1ª janela; Arq1 | Arq2 na 2ª janela)
-        meta_box_h = 1.2 * cm
-        gap = 0.3 * cm
-        title_h = 0.45 * cm
-        bottom_margin = 0.6 * cm  # margem inferior para garantir que tudo caiba na página
-        block_height = (content_h - bottom_margin) / 2
+        # 4 blocos em 1 página: 2 linhas x 2 colunas — tamanhos reduzidos para caber sem quebra
+        meta_box_h = 0.85 * cm
+        gap = 0.15 * cm
+        title_h = 0.3 * cm
+        block_height = content_h / 2  # exatamente metade da altura útil
         img_h_per = block_height - title_h - gap - meta_box_h - gap
-        fig_export_height = 260
-        scale_img = 1.8
+        fig_export_height = 200
+        scale_img = 1.5
     elif n == 2:
         meta_box_h = 1.5 * cm
         gap = 0.35 * cm
@@ -271,16 +274,16 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
         block_height = img_h_per + 0.45 * cm + meta_box_h + 0.35 * cm
     ap_display = parsed.get("aparelho_display") or format_equip(parsed.get("aparelho", ""))
     te_display = parsed.get("teste_display") or format_equip(parsed.get("teste", ""))
-    c.setFont("Helvetica-Bold", 16)
+    c.setFont("Helvetica-Bold", 14 if n == 4 else 16)
     c.drawString(margin, h - margin, "Dashboard VALD – Relatório de Teste")
-    c.setFont("Helvetica", 10)
-    y_sub = h - margin - 0.6 * cm
+    c.setFont("Helvetica", 8 if n == 4 else 10)
+    y_sub = h - margin - 0.5 * cm
     if n == 4 and second_parsed:
         ap2 = second_parsed.get("aparelho_display") or format_equip(second_parsed.get("aparelho", ""))
         te2 = second_parsed.get("teste_display") or format_equip(second_parsed.get("teste", ""))
         c.setFillColorRGB(0.35, 0.45, 0.6)
         c.drawString(margin, y_sub, f"Arquivo 1: {ap_display} • {te_display} • {parsed.get('atleta', '—')} • {parsed.get('data', '—')}")
-        c.drawString(margin, y_sub - 0.45 * cm, f"Arquivo 2: {ap2} • {te2} • {second_parsed.get('atleta', '—')} • {second_parsed.get('data', '—')}")
+        c.drawString(margin, y_sub - 0.35 * cm, f"Arquivo 2: {ap2} • {te2} • {second_parsed.get('atleta', '—')} • {second_parsed.get('data', '—')}")
     elif parsed.get("valid"):
         c.setFillColorRGB(0.35, 0.45, 0.6)
         c.drawString(margin, y_sub, f"Aparelho: {ap_display}   •   Teste: {te_display}   •   Atleta: {parsed.get('atleta', '—')}   •   Data: {parsed.get('data', '—')}")
@@ -289,18 +292,18 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
     c.setFillColorRGB(0, 0, 0)
     c.setStrokeColorRGB(0.45, 0.55, 0.72)
     c.setLineWidth(0.5)
-    c.line(margin, h - margin - 1.0 * cm, w - margin, h - margin - 1.0 * cm)
+    c.line(margin, h - margin - (0.85 if n == 4 else 1.0) * cm, w - margin, h - margin - (0.85 if n == 4 else 1.0) * cm)
     for idx, (titulo_pagina, fig, metrics, bilateral) in enumerate(all_pages):
         col = idx % ncols
         row = idx // ncols
         x0 = margin + col * cell_w
         y0 = y_top - row * block_height
-        c.setFont("Helvetica-Bold", 11)
+        c.setFont("Helvetica-Bold", 9 if n == 4 else 11)
         titulo = titulo_pagina[:48] + ("..." if len(titulo_pagina) > 48 else "")
         if n == 4:
             titulo = ("Arq1 — " if idx in (0, 2) else "Arq2 — ") + titulo
         c.drawString(x0, y0, titulo[:52] + ("..." if len(titulo) > 52 else ""))
-        y0 -= 0.45 * cm
+        y0 -= (0.3 if n == 4 else 0.45) * cm
         img_buf = io.BytesIO()
         img_ok = False
         # Cópia da figura para não mutar a original; exportação compatível com cloud (scale=1 primeiro)
@@ -318,7 +321,7 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
                     scale = min((cell_w - 0.2 * cm) / iw, img_h_per / ih)
                     dw, dh = iw * scale, ih * scale
                     c.drawImage(img, x0, y0 - dh, width=dw, height=dh)
-                    y0 -= dh + 0.3 * cm
+                    y0 -= dh + (0.2 if n == 4 else 0.3) * cm
                     img_ok = True
                     break
                 except Exception:
@@ -339,25 +342,32 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
         c.roundRect(x0, box_y, box_w, meta_box_h, 4)
         c.setFillColorRGB(0.15, 0.2, 0.3)
         c.setStrokeColorRGB(0, 0, 0)
-        pad = 0.2 * cm
+        pad = 0.15 * cm if n == 4 else 0.2 * cm
         if bilateral:
+            fs, fv = (8, 9) if n == 4 else (9, 10)
+            dy1 = 0.32 * cm if n == 4 else 0.42 * cm
+            dy2 = 0.58 * cm if n == 4 else 0.72 * cm
+            dy3 = 0.38 * cm if n == 4 else 0.48 * cm
+            dy4 = 0.14 * cm if n == 4 else 0.18 * cm
+            c.setFont("Helvetica", fs)
             for ox, label, val in [(pad, "Pico Esq.", f"{metrics.get('L_peak', 0):.1f}"), (box_w * 0.33, "Pico Dir.", f"{metrics.get('R_peak', 0):.1f}"), (box_w * 0.66, "Assim.(pico)", f"{metrics.get('asym_peak', 0):.1f}%")]:
-                c.setFont("Helvetica", 9)
-                c.drawString(x0 + ox, box_y + meta_box_h - 0.42 * cm, label)
-                c.setFont("Helvetica-Bold", 10)
-                c.drawString(x0 + ox, box_y + meta_box_h - 0.72 * cm, val)
+                c.drawString(x0 + ox, box_y + meta_box_h - dy1, label)
+                c.setFont("Helvetica-Bold", fv)
+                c.drawString(x0 + ox, box_y + meta_box_h - dy2, val)
+                c.setFont("Helvetica", fs)
             for ox, label, val in [(pad, "Média Esq.", f"{metrics.get('L_mean', 0):.1f}"), (box_w * 0.33, "Média Dir.", f"{metrics.get('R_mean', 0):.1f}"), (box_w * 0.66, "Assim.(média)", f"{metrics.get('asym_mean', 0):.1f}%")]:
-                c.setFont("Helvetica", 9)
-                c.drawString(x0 + ox, box_y + 0.48 * cm, label)
-                c.setFont("Helvetica-Bold", 10)
-                c.drawString(x0 + ox, box_y + 0.18 * cm, val)
+                c.drawString(x0 + ox, box_y + dy3, label)
+                c.setFont("Helvetica-Bold", fv)
+                c.drawString(x0 + ox, box_y + dy4, val)
+                c.setFont("Helvetica", fs)
         else:
-            c.setFont("Helvetica", 9)
-            c.drawString(x0 + pad, box_y + meta_box_h - 0.55 * cm, "Pico")
-            c.drawString(x0 + pad, box_y + 0.18 * cm, "Média")
-            c.setFont("Helvetica-Bold", 10)
-            c.drawString(x0 + box_w * 0.5, box_y + meta_box_h - 0.55 * cm, f"{metrics.get('peak', 0):.1f}")
-            c.drawString(x0 + box_w * 0.5, box_y + 0.18 * cm, f"{metrics.get('mean', 0):.1f}")
+            fs, fv = (8, 9) if n == 4 else (9, 10)
+            c.setFont("Helvetica", fs)
+            c.drawString(x0 + pad, box_y + meta_box_h - 0.45 * cm, "Pico")
+            c.drawString(x0 + pad, box_y + 0.14 * cm, "Média")
+            c.setFont("Helvetica-Bold", fv)
+            c.drawString(x0 + box_w * 0.5, box_y + meta_box_h - 0.45 * cm, f"{metrics.get('peak', 0):.1f}")
+            c.drawString(x0 + box_w * 0.5, box_y + 0.14 * cm, f"{metrics.get('mean', 0):.1f}")
     # Página de comparação (percentuais de diferença)
     if comparison_rows:
         c.showPage()
