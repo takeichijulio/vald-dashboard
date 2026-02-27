@@ -250,13 +250,13 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
     y_top = h - margin - header_h
     content_h = y_top - margin
     if n == 4:
-        # 4 blocos em 1 página: gráficos grandes + caixa de métricas confortável, sem espremer
-        meta_box_h = 1.1 * cm
-        gap = 0.2 * cm
-        title_h = 0.35 * cm
+        # 4 blocos em 1 página: gráficos maiores + caixa de métricas com espaçamento claro (sem sobrepor)
+        meta_box_h = 1.3 * cm
+        gap = 0.18 * cm
+        title_h = 0.32 * cm
         block_height = content_h / 2
         img_h_per = block_height - title_h - gap - meta_box_h - gap
-        fig_export_height = 320
+        fig_export_height = 360
         scale_img = 2.0
     elif n == 2:
         meta_box_h = 1.5 * cm
@@ -345,10 +345,14 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
         pad = 0.2 * cm
         if bilateral:
             fs, fv = (9, 10) if n == 4 else (9, 10)
-            dy1 = 0.38 * cm if n == 4 else 0.42 * cm
-            dy2 = 0.65 * cm if n == 4 else 0.72 * cm
-            dy3 = 0.45 * cm if n == 4 else 0.48 * cm
-            dy4 = 0.2 * cm if n == 4 else 0.18 * cm
+            # n==4: 4 linhas bem separadas (rótulo linha 1, valor linha 1, rótulo linha 2, valor linha 2) — sem sobreposição
+            if n == 4:
+                dy1 = 0.42 * cm   # rótulo linha 1 (distância do topo da caixa)
+                dy2 = 0.68 * cm   # valor linha 1 (abaixo do rótulo)
+                dy3 = 0.42 * cm   # rótulo linha 2 (distância da base da caixa)
+                dy4 = 0.18 * cm   # valor linha 2 (base)
+            else:
+                dy1, dy2, dy3, dy4 = 0.42 * cm, 0.72 * cm, 0.48 * cm, 0.18 * cm
             c.setFont("Helvetica", fs)
             for ox, label, val in [(pad, "Pico Esq.", f"{metrics.get('L_peak', 0):.1f}"), (box_w * 0.33, "Pico Dir.", f"{metrics.get('R_peak', 0):.1f}"), (box_w * 0.66, "Assim.(pico)", f"{metrics.get('asym_peak', 0):.1f}%")]:
                 c.drawString(x0 + ox, box_y + meta_box_h - dy1, label)
@@ -363,11 +367,18 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
         else:
             fs, fv = (9, 10) if n == 4 else (9, 10)
             c.setFont("Helvetica", fs)
-            c.drawString(x0 + pad, box_y + meta_box_h - 0.5 * cm, "Pico")
-            c.drawString(x0 + pad, box_y + 0.2 * cm, "Média")
-            c.setFont("Helvetica-Bold", fv)
-            c.drawString(x0 + box_w * 0.5, box_y + meta_box_h - 0.5 * cm, f"{metrics.get('peak', 0):.1f}")
-            c.drawString(x0 + box_w * 0.5, box_y + 0.2 * cm, f"{metrics.get('mean', 0):.1f}")
+            if n == 4:
+                c.drawString(x0 + pad, box_y + meta_box_h - 0.55 * cm, "Pico")
+                c.drawString(x0 + pad, box_y + 0.22 * cm, "Média")
+                c.setFont("Helvetica-Bold", fv)
+                c.drawString(x0 + box_w * 0.5, box_y + meta_box_h - 0.55 * cm, f"{metrics.get('peak', 0):.1f}")
+                c.drawString(x0 + box_w * 0.5, box_y + 0.22 * cm, f"{metrics.get('mean', 0):.1f}")
+            else:
+                c.drawString(x0 + pad, box_y + meta_box_h - 0.5 * cm, "Pico")
+                c.drawString(x0 + pad, box_y + 0.2 * cm, "Média")
+                c.setFont("Helvetica-Bold", fv)
+                c.drawString(x0 + box_w * 0.5, box_y + meta_box_h - 0.5 * cm, f"{metrics.get('peak', 0):.1f}")
+                c.drawString(x0 + box_w * 0.5, box_y + 0.2 * cm, f"{metrics.get('mean', 0):.1f}")
     # Página de comparação (percentuais de diferença)
     if comparison_rows:
         c.showPage()
