@@ -246,13 +246,14 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
     y_top = h - margin - header_h
     content_h = y_top - margin
     if n == 4:
-        # Uma página: 2 linhas x 2 colunas (Arq1 curta | Arq2 curta; Arq1 longa | Arq2 longa)
+        # Uma única página: 2 linhas x 2 colunas (Arq1 | Arq2 na 1ª janela; Arq1 | Arq2 na 2ª janela)
         meta_box_h = 1.2 * cm
         gap = 0.3 * cm
         title_h = 0.45 * cm
-        block_height = content_h / 2
+        bottom_margin = 0.6 * cm  # margem inferior para garantir que tudo caiba na página
+        block_height = (content_h - bottom_margin) / 2
         img_h_per = block_height - title_h - gap - meta_box_h - gap
-        fig_export_height = 280
+        fig_export_height = 260
         scale_img = 1.8
     elif n == 2:
         meta_box_h = 1.5 * cm
@@ -574,7 +575,7 @@ if not modo_unilateral:
             </div>""", unsafe_allow_html=True)
         st.markdown("### 📈 Diferença % (Arquivo 1 → Arquivo 2)")
         comp_rows = []
-        for janela, ma, mb in [("Curta", m1, m1_2), ("Longa", m2, m2_2)]:
+        for janela, ma, mb in [(LABEL_1, m1, m1_2), (LABEL_2, m2, m2_2)]:
             for label, k1, k2 in [
                 ("Pico Esq.", "L_peak", "L_peak"), ("Pico Dir.", "R_peak", "R_peak"), ("Assim. (pico) %", "asym_peak", "asym_peak"),
                 ("Média Esq.", "L_mean", "L_mean"), ("Média Dir.", "R_mean", "R_mean"), ("Assim. (média) %", "asym_mean", "asym_mean"),
