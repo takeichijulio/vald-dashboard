@@ -511,7 +511,7 @@ if not modo_unilateral:
             t0_short, t1_short = min(rng_short[0], rng_short[1]), max(rng_short[0], rng_short[1])
             st.caption(f"Janela: {t0_short:.2f}s → {t1_short:.2f}s (Δ = {t1_short - t0_short:.2f}s)")
             fig1 = make_trace_figure(df, time_col, l_col, r_col, t0_short, t1_short, LABEL_1, height=500)
-            st.plotly_chart(fig1, use_container_width=True)
+            st.plotly_chart(fig1, use_container_width=True, key="chart_single_short")
             dfw1 = filter_window(df, time_col, t0_short, t1_short)
             m1 = window_metrics(dfw1, l_col, r_col)
             st.markdown(f"""<div class="metrics-card">
@@ -528,7 +528,7 @@ if not modo_unilateral:
             t0_long, t1_long = min(rng_long[0], rng_long[1]), max(rng_long[0], rng_long[1])
             st.caption(f"Janela: {t0_long:.2f}s → {t1_long:.2f}s (Δ = {t1_long - t0_long:.2f}s)")
             fig2 = make_trace_figure(df, time_col, l_col, r_col, t0_long, t1_long, LABEL_2, height=500)
-            st.plotly_chart(fig2, use_container_width=True)
+            st.plotly_chart(fig2, use_container_width=True, key="chart_single_long")
             dfw2 = filter_window(df, time_col, t0_long, t1_long)
             m2 = window_metrics(dfw2, l_col, r_col)
             st.markdown(f"""<div class="metrics-card">
@@ -565,7 +565,7 @@ if not modo_unilateral:
             rng_short = st.slider(f"Janela {LABEL_1} [s]", t_min, t_max, (float(short_s), float(short_e)), step=0.01, key="b_short")
             t0_short, t1_short = min(rng_short[0], rng_short[1]), max(rng_short[0], rng_short[1])
             fig1 = make_trace_figure(df, time_col, l_col, r_col, t0_short, t1_short, LABEL_1, height=H)
-            st.plotly_chart(fig1, use_container_width=True)
+            st.plotly_chart(fig1, use_container_width=True, key="chart_file1_short")
             dfw1 = filter_window(df, time_col, t0_short, t1_short)
             m1 = window_metrics(dfw1, l_col, r_col)
             st.markdown(f"""<div class="metrics-card metrics-compact">
@@ -579,7 +579,7 @@ if not modo_unilateral:
             rng_long = st.slider(f"Janela {LABEL_2} [s]", t_min, t_max, (float(long_s), float(long_e)), step=0.01, key="b_long")
             t0_long, t1_long = min(rng_long[0], rng_long[1]), max(rng_long[0], rng_long[1])
             fig2 = make_trace_figure(df, time_col, l_col, r_col, t0_long, t1_long, LABEL_2, height=H)
-            st.plotly_chart(fig2, use_container_width=True)
+            st.plotly_chart(fig2, use_container_width=True, key="chart_file1_long")
             dfw2 = filter_window(df, time_col, t0_long, t1_long)
             m2 = window_metrics(dfw2, l_col, r_col)
             st.markdown(f"""<div class="metrics-card metrics-compact">
@@ -595,7 +595,7 @@ if not modo_unilateral:
             rng_short_2 = st.slider(f"Janela {LABEL_1} [s]", t_min_2, t_max_2, (short_s_2, short_e_2), step=0.01, key="b_short_2")
             t0_short_2, t1_short_2 = min(rng_short_2[0], rng_short_2[1]), max(rng_short_2[0], rng_short_2[1])
             fig1_2 = make_trace_figure(df2, time_col2, l_col2, r_col2, t0_short_2, t1_short_2, LABEL_1, height=H)
-            st.plotly_chart(fig1_2, use_container_width=True)
+            st.plotly_chart(fig1_2, use_container_width=True, key="chart_file2_short")
             dfw1_2 = filter_window(df2, time_col2, t0_short_2, t1_short_2)
             m1_2 = window_metrics(dfw1_2, l_col2, r_col2)
             st.markdown(f"""<div class="metrics-card metrics-compact">
@@ -609,7 +609,7 @@ if not modo_unilateral:
             rng_long_2 = st.slider(f"Janela {LABEL_2} [s]", t_min_2, t_max_2, (long_s_2, long_e_2), step=0.01, key="b_long_2")
             t0_long_2, t1_long_2 = min(rng_long_2[0], rng_long_2[1]), max(rng_long_2[0], rng_long_2[1])
             fig2_2 = make_trace_figure(df2, time_col2, l_col2, r_col2, t0_long_2, t1_long_2, LABEL_2, height=H)
-            st.plotly_chart(fig2_2, use_container_width=True)
+            st.plotly_chart(fig2_2, use_container_width=True, key="chart_file2_long")
             dfw2_2 = filter_window(df2, time_col2, t0_long_2, t1_long_2)
             m2_2 = window_metrics(dfw2_2, l_col2, r_col2)
             st.markdown(f"""<div class="metrics-card metrics-compact">
@@ -652,7 +652,7 @@ else:
         t0_short_r, t1_short_r = min(rng_r_short[0], rng_r_short[1]), max(rng_r_short[0], rng_r_short[1])
         st.caption(f"{t0_short_r:.2f}s → {t1_short_r:.2f}s")
         fig_r_short = make_trace_figure_single(df, time_col, r_col, t0_short_r, t1_short_r, f"Direita — {LABEL_1}", COR_DIREITA)
-        st.plotly_chart(fig_r_short, use_container_width=True)
+        st.plotly_chart(fig_r_short, use_container_width=True, key="chart_uni_r_short")
         mr_short = window_metrics_single(filter_window(df, time_col, t0_short_r, t1_short_r), r_col)
         st.markdown(f"""<div class="metrics-card metrics-card-2"><div class="m-item"><div class="m-label">Pico Dir.</div><div class="m-value">{mr_short['peak']:.2f}</div></div><div class="m-item"><div class="m-label">Média Dir.</div><div class="m-value">{mr_short['mean']:.2f}</div></div></div>""", unsafe_allow_html=True)
     with colR2:
@@ -660,7 +660,7 @@ else:
         t0_long_r, t1_long_r = min(rng_r_long[0], rng_r_long[1]), max(rng_r_long[0], rng_r_long[1])
         st.caption(f"{t0_long_r:.2f}s → {t1_long_r:.2f}s")
         fig_r_long = make_trace_figure_single(df, time_col, r_col, t0_long_r, t1_long_r, f"Direita — {LABEL_2}", COR_DIREITA)
-        st.plotly_chart(fig_r_long, use_container_width=True)
+        st.plotly_chart(fig_r_long, use_container_width=True, key="chart_uni_r_long")
         mr_long = window_metrics_single(filter_window(df, time_col, t0_long_r, t1_long_r), r_col)
         st.markdown(f"""<div class="metrics-card metrics-card-2"><div class="m-item"><div class="m-label">Pico Dir.</div><div class="m-value">{mr_long['peak']:.2f}</div></div><div class="m-item"><div class="m-label">Média Dir.</div><div class="m-value">{mr_long['mean']:.2f}</div></div></div>""", unsafe_allow_html=True)
     st.markdown("#### 🦵 Esquerda")
@@ -669,14 +669,14 @@ else:
         rng_l_short = st.slider(f"Início e fim {LABEL_1_SHORT} Esq. [s]", t_min, t_max, (float(short_s), float(short_e)), step=0.01, key="u_short_l")
         t0_short_l, t1_short_l = min(rng_l_short[0], rng_l_short[1]), max(rng_l_short[0], rng_l_short[1])
         fig_l_short = make_trace_figure_single(df, time_col, l_col, t0_short_l, t1_short_l, f"Esquerda — {LABEL_1}", COR_ESQUERDA)
-        st.plotly_chart(fig_l_short, use_container_width=True)
+        st.plotly_chart(fig_l_short, use_container_width=True, key="chart_uni_l_short")
         ml_short = window_metrics_single(filter_window(df, time_col, t0_short_l, t1_short_l), l_col)
         st.markdown(f"""<div class="metrics-card metrics-card-2"><div class="m-item"><div class="m-label">Pico Esq.</div><div class="m-value">{ml_short['peak']:.2f}</div></div><div class="m-item"><div class="m-label">Média Esq.</div><div class="m-value">{ml_short['mean']:.2f}</div></div></div>""", unsafe_allow_html=True)
     with colL2:
         rng_l_long = st.slider(f"Início e fim {LABEL_2_SHORT} Esq. [s]", t_min, t_max, (float(long_s), float(long_e)), step=0.01, key="u_long_l")
         t0_long_l, t1_long_l = min(rng_l_long[0], rng_l_long[1]), max(rng_l_long[0], rng_l_long[1])
         fig_l_long = make_trace_figure_single(df, time_col, l_col, t0_long_l, t1_long_l, f"Esquerda — {LABEL_2}", COR_ESQUERDA)
-        st.plotly_chart(fig_l_long, use_container_width=True)
+        st.plotly_chart(fig_l_long, use_container_width=True, key="chart_uni_l_long")
         ml_long = window_metrics_single(filter_window(df, time_col, t0_long_l, t1_long_l), l_col)
         st.markdown(f"""<div class="metrics-card metrics-card-2"><div class="m-item"><div class="m-label">Pico Esq.</div><div class="m-value">{ml_long['peak']:.2f}</div></div><div class="m-item"><div class="m-label">Média Esq.</div><div class="m-value">{ml_long['mean']:.2f}</div></div></div>""", unsafe_allow_html=True)
 
