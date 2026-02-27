@@ -243,20 +243,20 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
     ncols = 2
     cell_w = content_w / ncols
     if n == 4:
-        # Cabeçalho compacto; resto da página = 4 blocos (gráficos e métricas bem proporcionados)
-        header_h = 1.05 * cm
+        # Cabeçalho com espaço suficiente: título + 2 linhas de arquivos + linha + folga (nada sobreposto)
+        header_h = 1.7 * cm
     else:
         header_h = 1.35 * cm
     y_top = h - margin - header_h
     content_h = y_top - margin
     if n == 4:
-        # 4 blocos em 1 página: gráficos maiores + caixa de métricas com espaçamento claro (sem sobrepor)
-        meta_box_h = 1.3 * cm
-        gap = 0.18 * cm
-        title_h = 0.32 * cm
+        # 4 blocos: caixa de métricas alta com 4 linhas bem separadas (Pico/Média Esq./Dir./Assim. sem sobrepor)
+        meta_box_h = 1.7 * cm
+        gap = 0.2 * cm
+        title_h = 0.36 * cm
         block_height = content_h / 2
         img_h_per = block_height - title_h - gap - meta_box_h - gap
-        fig_export_height = 360
+        fig_export_height = 340
         scale_img = 2.0
     elif n == 2:
         meta_box_h = 1.5 * cm
@@ -277,22 +277,29 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
     c.setFont("Helvetica-Bold", 14 if n == 4 else 16)
     c.drawString(margin, h - margin, "Dashboard VALD – Relatório de Teste")
     c.setFont("Helvetica", 9 if n == 4 else 10)
-    y_sub = h - margin - 0.5 * cm
     if n == 4 and second_parsed:
+        # Duas linhas de arquivo com espaçamento claro; linha separadora abaixo com folga antes dos gráficos
+        y_sub = h - margin - 0.55 * cm
         ap2 = second_parsed.get("aparelho_display") or format_equip(second_parsed.get("aparelho", ""))
         te2 = second_parsed.get("teste_display") or format_equip(second_parsed.get("teste", ""))
         c.setFillColorRGB(0.35, 0.45, 0.6)
         c.drawString(margin, y_sub, f"Arquivo 1: {ap_display} • {te_display} • {parsed.get('atleta', '—')} • {parsed.get('data', '—')}")
-        c.drawString(margin, y_sub - 0.35 * cm, f"Arquivo 2: {ap2} • {te2} • {second_parsed.get('atleta', '—')} • {second_parsed.get('data', '—')}")
-    elif parsed.get("valid"):
-        c.setFillColorRGB(0.35, 0.45, 0.6)
-        c.drawString(margin, y_sub, f"Aparelho: {ap_display}   •   Teste: {te_display}   •   Atleta: {parsed.get('atleta', '—')}   •   Data: {parsed.get('data', '—')}")
+        c.drawString(margin, y_sub - 0.42 * cm, f"Arquivo 2: {ap2} • {te2} • {second_parsed.get('atleta', '—')} • {second_parsed.get('data', '—')}")
+        c.setFillColorRGB(0, 0, 0)
+        c.setStrokeColorRGB(0.45, 0.55, 0.72)
+        c.setLineWidth(0.5)
+        c.line(margin, y_sub - 0.42 * cm - 0.5 * cm, w - margin, y_sub - 0.42 * cm - 0.5 * cm)  # linha bem abaixo do Arquivo 2
     else:
-        c.drawString(margin, y_sub, f"Arquivo: {parsed.get('filename', nome_arquivo)}")
-    c.setFillColorRGB(0, 0, 0)
-    c.setStrokeColorRGB(0.45, 0.55, 0.72)
-    c.setLineWidth(0.5)
-    c.line(margin, h - margin - (0.85 if n == 4 else 1.0) * cm, w - margin, h - margin - (0.85 if n == 4 else 1.0) * cm)
+        y_sub = h - margin - 0.5 * cm
+        if parsed.get("valid"):
+            c.setFillColorRGB(0.35, 0.45, 0.6)
+            c.drawString(margin, y_sub, f"Aparelho: {ap_display}   •   Teste: {te_display}   •   Atleta: {parsed.get('atleta', '—')}   •   Data: {parsed.get('data', '—')}")
+        else:
+            c.drawString(margin, y_sub, f"Arquivo: {parsed.get('filename', nome_arquivo)}")
+        c.setFillColorRGB(0, 0, 0)
+        c.setStrokeColorRGB(0.45, 0.55, 0.72)
+        c.setLineWidth(0.5)
+        c.line(margin, h - margin - 1.0 * cm, w - margin, h - margin - 1.0 * cm)
     for idx, (titulo_pagina, fig, metrics, bilateral) in enumerate(all_pages):
         col = idx % ncols
         row = idx // ncols
@@ -345,12 +352,12 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
         pad = 0.2 * cm
         if bilateral:
             fs, fv = (9, 10) if n == 4 else (9, 10)
-            # n==4: 4 linhas bem separadas (rótulo linha 1, valor linha 1, rótulo linha 2, valor linha 2) — sem sobreposição
+            # n==4: caixa 1.7cm com 4 faixas bem separadas (rótulo1, valor1, rótulo2, valor2) — zero sobreposição
             if n == 4:
-                dy1 = 0.42 * cm   # rótulo linha 1 (distância do topo da caixa)
-                dy2 = 0.68 * cm   # valor linha 1 (abaixo do rótulo)
-                dy3 = 0.42 * cm   # rótulo linha 2 (distância da base da caixa)
-                dy4 = 0.18 * cm   # valor linha 2 (base)
+                dy1 = 0.34 * cm   # rótulo linha 1 (topo)
+                dy2 = 0.72 * cm   # valor linha 1
+                dy3 = 0.62 * cm   # rótulo linha 2 (acima da base)
+                dy4 = 0.24 * cm   # valor linha 2 (base)
             else:
                 dy1, dy2, dy3, dy4 = 0.42 * cm, 0.72 * cm, 0.48 * cm, 0.18 * cm
             c.setFont("Helvetica", fs)
@@ -368,11 +375,11 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
             fs, fv = (9, 10) if n == 4 else (9, 10)
             c.setFont("Helvetica", fs)
             if n == 4:
-                c.drawString(x0 + pad, box_y + meta_box_h - 0.55 * cm, "Pico")
-                c.drawString(x0 + pad, box_y + 0.22 * cm, "Média")
+                c.drawString(x0 + pad, box_y + meta_box_h - 0.6 * cm, "Pico")
+                c.drawString(x0 + pad, box_y + 0.28 * cm, "Média")
                 c.setFont("Helvetica-Bold", fv)
-                c.drawString(x0 + box_w * 0.5, box_y + meta_box_h - 0.55 * cm, f"{metrics.get('peak', 0):.1f}")
-                c.drawString(x0 + box_w * 0.5, box_y + 0.22 * cm, f"{metrics.get('mean', 0):.1f}")
+                c.drawString(x0 + box_w * 0.5, box_y + meta_box_h - 0.6 * cm, f"{metrics.get('peak', 0):.1f}")
+                c.drawString(x0 + box_w * 0.5, box_y + 0.28 * cm, f"{metrics.get('mean', 0):.1f}")
             else:
                 c.drawString(x0 + pad, box_y + meta_box_h - 0.5 * cm, "Pico")
                 c.drawString(x0 + pad, box_y + 0.2 * cm, "Média")
