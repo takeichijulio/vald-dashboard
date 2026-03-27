@@ -343,11 +343,6 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
         tit = titulo[:56] + ("…" if len(titulo) > 56 else "")
         cnv.drawString(text_x, y_top_bar - bar_h + 0.14 * cm, tit)
 
-    def _metrics_heights(bilateral, n_blocks):
-        if bilateral:
-            return 2.15 * cm if n_blocks == 4 else 1.9 * cm
-        return 1.15 * cm if n_blocks == 4 else 1.05 * cm
-
     def _draw_metrics_bilateral(cnv, x0, box_y, box_w, box_h, metrics):
         third = box_w / 3.0
         sep_pt = 0.4
@@ -499,25 +494,18 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
 
     if n == 4:
         block_height = content_h / 2.0
-        title_bar_h = 0.52 * cm
-        gap_after_title = 0.12 * cm
-        gap_after_metrics = 0.12 * cm
-        fig_export_height = 340
         scale_img = 2.0
     elif n == 2:
         block_height = content_h
-        title_bar_h = 0.55 * cm
-        gap_after_title = 0.15 * cm
-        gap_after_metrics = 0.15 * cm
-        fig_export_height = 520
         scale_img = 2.5
     else:
         block_height = content_h / 2.0
-        title_bar_h = 0.5 * cm
-        gap_after_title = 0.12 * cm
-        gap_after_metrics = 0.12 * cm
-        fig_export_height = 320
         scale_img = 1.8
+
+    title_h = 0.48 * cm
+    metrics_box_h = 1.9 * cm
+    gap = 0.15 * cm
+    img_h_per = block_height - title_h - gap - metrics_box_h
 
     # --- Página 1 ---
     _draw_header_block(c, w, h, margin, hdr_top_y, header_h, "Dashboard VALD – Relatório de Teste", sublines)
@@ -528,20 +516,23 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
         row = idx // ncols
         x0 = margin + col * cell_w + inner_pad
         cw = cell_w - 2 * inner_pad
-        cell_top = body_y_top - row * block_height
+        y0 = body_y_top - row * block_height
+        cell_top = y0
         cell_bot = cell_top - block_height
 
-        meta_h = _metrics_heights(bilateral, n)
-        img_h_per = block_height - title_bar_h - gap_after_title - meta_h - gap_after_metrics
-        chart_bot = cell_bot + meta_h + gap_after_metrics
-        img_h_max = max(1.0, img_h_per)
+        title_top = cell_top
+        img_top = title_top - title_h
+        img_bot = img_top - img_h_per
+        metrics_y = img_bot - gap
+        box_y = metrics_y - metrics_box_h
 
         show_badge = n == 4 and second_parsed is not None
         badge_arq1 = idx in (0, 2)
         disp_title = titulo_pagina[:48] + ("…" if len(titulo_pagina) > 48 else "")
 
-        _draw_block_title_bar(c, x0, cell_top, cw, title_bar_h, disp_title, show_badge, badge_arq1)
+        _draw_block_title_bar(c, x0, cell_top, cw, title_h, disp_title, show_badge, badge_arq1)
 
+        fig_export_height = max(280, int(img_h_per * 1.5))
         img_buf = io.BytesIO()
         img_ok = False
         try:
@@ -573,7 +564,7 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
                 ),
                 title_font=dict(color="#1c2738"),
                 height=fig_export_height,
-                margin=dict(t=32, b=28, l=44, r=16),
+                margin=dict(t=28, b=24, l=40, r=12),
             )
             for scale_try in (1, scale_img):
                 try:
@@ -583,10 +574,11 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
                     img_buf.seek(0)
                     img = ImageReader(img_buf)
                     iw, ih = img.getSize()
-                    sc = min(cw / iw, img_h_max / ih)
+                    slot_w = cw - 0.15 * cm
+                    sc = min(slot_w / iw, img_h_per / ih)
                     dw, dh = iw * sc, ih * sc
-                    iy = chart_bot
-                    c.drawImage(img, x0, iy, width=dw, height=dh, mask="auto")
+                    img_x = x0 + (cw - 0.15 * cm - dw) / 2
+                    c.drawImage(img, img_x, img_top - dh, width=dw, height=dh, mask="auto")
                     img_ok = True
                     break
                 except Exception:
@@ -597,15 +589,14 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
         if not img_ok:
             c.setFont("Helvetica", 8)
             c.setFillColorRGB(*_hex_rgb(C["muted"]))
-            c.drawString(x0, chart_bot + img_h_max * 0.45, "(Gráfico: exportação indisponível neste ambiente)")
+            c.drawString(x0, img_bot + img_h_per * 0.45, "(Gráfico: exportação indisponível neste ambiente)")
             c.setFillColorRGB(*_hex_rgb(C["text"]))
 
-        box_y = cell_bot
         box_w = cw
         if bilateral:
-            _draw_metrics_bilateral(c, x0, box_y, box_w, meta_h, metrics)
+            _draw_metrics_bilateral(c, x0, box_y, box_w, metrics_box_h, metrics)
         else:
-            _draw_metrics_unilateral(c, x0, box_y, box_w, meta_h, metrics)
+            _draw_metrics_unilateral(c, x0, box_y, box_w, metrics_box_h, metrics)
 
     # --- Página comparação ---
     if comparison_rows:
