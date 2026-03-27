@@ -228,96 +228,308 @@ def _pct_diff(v1, v2):
 def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None, comparison_rows=None):
     if not HAS_REPORTLAB:
         return None
+
+    def _hex_rgb(hex_color: str):
+        hx = hex_color.lstrip("#")
+        return tuple(int(hx[i : i + 2], 16) / 255.0 for i in (0, 2, 4))
+
+    C = {
+        "header_bg": "#1a2332",
+        "header_sub": "#8ab4f8",
+        "accent": "#4a7ac4",
+        "body_bg": "#ffffff",
+        "text": "#1c2738",
+        "muted": "#5a6677",
+        "rule": "#c8d0db",
+        "block_title_bg": "#eef2f7",
+        "badge1": "#4a7ac4",
+        "badge2": "#e8a020",
+        "col_L": "#dce8ff",
+        "col_R": "#fff3dc",
+        "col_A": "#f0f2f5",
+        "pico_hdr": "#4a7ac4",
+        "alert": "#c0392b",
+        "delta_pos": "#1a6b3c",
+        "delta_neg": "#c0392b",
+        "delta_zero": "#444444",
+        "group_bg": "#e8edf4",
+        "zebra": "#f7f9fc",
+        "table_head": "#1a2332",
+    }
+
+    def _fill_hex(name):
+        c.setFillColorRGB(*_hex_rgb(C[name]))
+
+    def _stroke_hex(name):
+        c.setStrokeColorRGB(*_hex_rgb(C[name]))
+
+    def _fmt_num(v):
+        if v is None:
+            return "—"
+        try:
+            fv = float(v)
+            if isinstance(fv, float) and np.isnan(fv):
+                return "—"
+            return f"{fv:.2f}"
+        except (TypeError, ValueError):
+            return str(v) if v is not None else "—"
+
+    def _parse_delta_pct(pct_str):
+        if pct_str is None or (isinstance(pct_str, str) and pct_str.strip() in ("", "—")):
+            return None
+        s = str(pct_str).strip().replace("%", "").replace(",", ".")
+        try:
+            return float(s)
+        except ValueError:
+            return None
+
+    def _draw_header_block(cnv, page_w, page_h, mrg, hdr_top_y, hdr_h, title_text, sublines):
+        """Desenha faixa de cabeçalho escuro + acento inferior. hdr_top_y = topo interno (abaixo da margem)."""
+        accent_pt = 2.0
+        body_top = hdr_top_y - hdr_h + accent_pt
+        _fill_hex("header_bg")
+        cnv.rect(mrg, body_top, page_w - 2 * mrg, hdr_h - accent_pt, stroke=0, fill=1)
+        _fill_hex("accent")
+        cnv.rect(mrg, hdr_top_y - hdr_h, page_w - 2 * mrg, accent_pt, stroke=0, fill=1)
+        cnv.setFillColorRGB(1, 1, 1)
+        cnv.setFont("Helvetica-Bold", 13)
+        ty = hdr_top_y - 0.45 * cm
+        cnv.drawString(mrg + 0.35 * cm, ty, title_text)
+        cnv.setFillColorRGB(*_hex_rgb(C["header_sub"]))
+        cnv.setFont("Helvetica", 8.5)
+        sy = ty - 0.38 * cm
+        for line in sublines:
+            cnv.drawString(mrg + 0.35 * cm, sy, line[:120] + ("…" if len(line) > 120 else ""))
+            sy -= 0.36 * cm
+
+    def _draw_body_white(cnv, x0, y_bottom, bw, y_top):
+        cnv.setFillColorRGB(*_hex_rgb(C["body_bg"]))
+        cnv.rect(x0, y_bottom, bw, y_top - y_bottom, stroke=0, fill=1)
+
+    def _draw_block_title_bar(cnv, x0, y_top_bar, bw, bar_h, titulo, show_badge, badge_is_arq1):
+        """Barra de título com cantos arredondados; badge opcional à esquerda (sobre o fundo)."""
+        pad_in = 0.12 * cm
+        bx = x0 + pad_in
+        inner_w = bw - 2 * pad_in
+        _fill_hex("block_title_bg")
+        _stroke_hex("rule")
+        cnv.setLineWidth(0.6)
+        cnv.roundRect(bx, y_top_bar - bar_h, inner_w, bar_h, 4, stroke=1, fill=1)
+        text_x = bx + 0.22 * cm
+        if show_badge:
+            badge_w, badge_h = 0.88 * cm, 0.34 * cm
+            by = y_top_bar - bar_h + (bar_h - badge_h) / 2
+            cnv.setFillColorRGB(*_hex_rgb(C["badge1"] if badge_is_arq1 else C["badge2"]))
+            cnv.roundRect(bx + 0.1 * cm, by, badge_w, badge_h, 2.5, stroke=0, fill=1)
+            cnv.setFillColorRGB(1, 1, 1)
+            cnv.setFont("Helvetica-Bold", 7.5)
+            cnv.drawString(bx + 0.2 * cm, by + 0.09 * cm, "Arq1" if badge_is_arq1 else "Arq2")
+            text_x = bx + 0.1 * cm + badge_w + 0.14 * cm
+        _fill_hex("text")
+        cnv.setFont("Helvetica-Bold", 8.5 if show_badge else 9)
+        tit = titulo[:56] + ("…" if len(titulo) > 56 else "")
+        cnv.drawString(text_x, y_top_bar - bar_h + 0.14 * cm, tit)
+
+    def _metrics_heights(bilateral, n_blocks):
+        if bilateral:
+            return 2.15 * cm if n_blocks == 4 else 1.9 * cm
+        return 1.15 * cm if n_blocks == 4 else 1.05 * cm
+
+    def _draw_metrics_bilateral(cnv, x0, box_y, box_w, box_h, metrics):
+        third = box_w / 3.0
+        sep_pt = 0.4
+        mid_y = box_y + box_h / 2.0
+        ap = float(metrics.get("asym_peak", 0) or 0)
+        am = float(metrics.get("asym_mean", 0) or 0)
+
+        for i, bg_key in enumerate(["col_L", "col_R", "col_A"]):
+            cnv.setFillColorRGB(*_hex_rgb(C[bg_key]))
+            cnv.rect(x0 + i * third, box_y, third, box_h, stroke=0, fill=1)
+        _stroke_hex("rule")
+        cnv.setLineWidth(sep_pt / 2)
+        cnv.line(x0 + third, box_y, x0 + third, box_y + box_h)
+        cnv.line(x0 + 2 * third, box_y, x0 + 2 * third, box_y + box_h)
+        cnv.setLineWidth(sep_pt)
+        cnv.line(x0, mid_y, x0 + box_w, mid_y)
+
+        fs_lab, fs_val, fs_hdr = 7, 9, 6.5
+        y_pico_hdr = box_y + box_h * 0.88
+        y1_lab = box_y + box_h * 0.68
+        y1_val = box_y + box_h * 0.56
+        y_media_hdr = box_y + box_h * 0.42
+        y2_lab = box_y + box_h * 0.32
+        y2_val = box_y + box_h * 0.14
+
+        def asym_txt(a):
+            if abs(a) > 10.0:
+                cnv.setFillColorRGB(*_hex_rgb(C["alert"]))
+                return f"⚠ {a:.2f}%"
+            cnv.setFillColorRGB(*_hex_rgb(C["text"]))
+            return f"{a:.2f}%"
+
+        # Coluna esquerda: cabeçalhos PICO / MÉDIA
+        _fill_hex("pico_hdr")
+        cnv.setFont("Helvetica-Bold", fs_hdr)
+        cnv.drawString(x0 + 0.12 * cm, y_pico_hdr, "PICO")
+        cnv.drawString(x0 + 0.12 * cm, y_media_hdr, "MÉDIA")
+
+        _fill_hex("muted")
+        cnv.setFont("Helvetica", fs_lab)
+        cnv.drawString(x0 + 0.12 * cm, y1_lab, "Pico Esq.")
+        cnv.setFont("Helvetica-Bold", fs_val)
+        cnv.setFillColorRGB(*_hex_rgb(C["text"]))
+        cnv.drawString(x0 + 0.12 * cm, y1_val, f"{float(metrics.get('L_peak', 0) or 0):.2f}")
+
+        _fill_hex("muted")
+        cnv.setFont("Helvetica", fs_lab)
+        cnv.drawString(x0 + 0.12 * cm, y2_lab, "Média Esq.")
+        cnv.setFont("Helvetica-Bold", fs_val)
+        cnv.setFillColorRGB(*_hex_rgb(C["text"]))
+        cnv.drawString(x0 + 0.12 * cm, y2_val, f"{float(metrics.get('L_mean', 0) or 0):.2f}")
+
+        cx = x0 + third
+        _fill_hex("muted")
+        cnv.setFont("Helvetica", fs_lab)
+        cnv.drawString(cx + 0.12 * cm, y1_lab, "Pico Dir.")
+        cnv.setFont("Helvetica-Bold", fs_val)
+        cnv.setFillColorRGB(*_hex_rgb(C["text"]))
+        cnv.drawString(cx + 0.12 * cm, y1_val, f"{float(metrics.get('R_peak', 0) or 0):.2f}")
+        _fill_hex("muted")
+        cnv.setFont("Helvetica", fs_lab)
+        cnv.drawString(cx + 0.12 * cm, y2_lab, "Média Dir.")
+        cnv.setFont("Helvetica-Bold", fs_val)
+        cnv.setFillColorRGB(*_hex_rgb(C["text"]))
+        cnv.drawString(cx + 0.12 * cm, y2_val, f"{float(metrics.get('R_mean', 0) or 0):.2f}")
+
+        cx2 = x0 + 2 * third
+        _fill_hex("muted")
+        cnv.setFont("Helvetica", fs_lab)
+        cnv.drawString(cx2 + 0.1 * cm, y1_lab, "Assim. (pico)")
+        cnv.setFont("Helvetica-Bold", fs_val)
+        s1 = asym_txt(ap)
+        cnv.drawString(cx2 + 0.1 * cm, y1_val, s1)
+        _fill_hex("muted")
+        cnv.setFont("Helvetica", fs_lab)
+        cnv.drawString(cx2 + 0.1 * cm, y2_lab, "Assim. (média)")
+        cnv.setFont("Helvetica-Bold", fs_val)
+        s2 = asym_txt(am)
+        cnv.drawString(cx2 + 0.1 * cm, y2_val, s2)
+
+        _stroke_hex("rule")
+        cnv.setLineWidth(0.8)
+        cnv.roundRect(x0, box_y, box_w, box_h, 3, stroke=1, fill=0)
+
+    def _draw_metrics_unilateral(cnv, x0, box_y, box_w, box_h, metrics):
+        half = box_w / 2.0
+        cnv.setFillColorRGB(*_hex_rgb(C["col_L"]))
+        cnv.rect(x0, box_y, half, box_h, stroke=0, fill=1)
+        cnv.setFillColorRGB(*_hex_rgb(C["col_R"]))
+        cnv.rect(x0 + half, box_y, half, box_h, stroke=0, fill=1)
+        _stroke_hex("rule")
+        cnv.setLineWidth(0.8)
+        cnv.line(x0 + half, box_y, x0 + half, box_y + box_h)
+        _fill_hex("muted")
+        cnv.setFont("Helvetica", 8)
+        cy = box_y + box_h * 0.58
+        cnv.drawString(x0 + 0.2 * cm, cy, "Pico")
+        cnv.drawString(x0 + half + 0.2 * cm, cy, "Média")
+        cnv.setFont("Helvetica-Bold", 10)
+        cnv.setFillColorRGB(*_hex_rgb(C["text"]))
+        cnv.drawString(x0 + 0.2 * cm, box_y + box_h * 0.28, f"{float(metrics.get('peak', 0) or 0):.2f}")
+        cnv.drawString(x0 + half + 0.2 * cm, box_y + box_h * 0.28, f"{float(metrics.get('mean', 0) or 0):.2f}")
+        cnv.setLineWidth(0.8)
+        _stroke_hex("rule")
+        cnv.roundRect(x0, box_y, box_w, box_h, 3, stroke=1, fill=0)
+
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
     w, h = A4
     margin = 0.7 * cm
     content_w = w - 2 * margin
-    # Com dois arquivos: mesmos gráficos e métricas na mesma página (2x2)
+
     if second_parsed and second_pages and len(pages) == 2 and len(second_pages) == 2:
-        all_pages = [pages[0], second_pages[0], pages[1], second_pages[1]]  # [Arq1 curta, Arq2 curta, Arq1 longa, Arq2 longa]
+        all_pages = [pages[0], second_pages[0], pages[1], second_pages[1]]
         n = 4
     else:
         all_pages = pages
         n = len(pages)
+
     ncols = 2
     cell_w = content_w / ncols
-    if n == 4:
-        # Cabeçalho com espaço suficiente: título + 2 linhas de arquivos + linha + folga (nada sobreposto)
-        header_h = 1.7 * cm
+    ap_display = parsed.get("aparelho_display") or format_equip(parsed.get("aparelho", ""))
+    te_display = parsed.get("teste_display") or format_equip(parsed.get("teste", ""))
+
+    if n == 4 and second_parsed:
+        sublines = []
+        ap2 = second_parsed.get("aparelho_display") or format_equip(second_parsed.get("aparelho", ""))
+        te2 = second_parsed.get("teste_display") or format_equip(second_parsed.get("teste", ""))
+        sublines.append(f"Arquivo 1: {ap_display} • {te_display} • {parsed.get('atleta', '—')} • {parsed.get('data', '—')}")
+        sublines.append(f"Arquivo 2: {ap2} • {te2} • {second_parsed.get('atleta', '—')} • {second_parsed.get('data', '—')}")
+        header_h = 1.05 * cm + len(sublines) * 0.36 * cm + 0.35 * cm
     else:
-        header_h = 1.35 * cm
-    y_top = h - margin - header_h
-    content_h = y_top - margin
+        if parsed.get("valid"):
+            sublines = [f"Aparelho: {ap_display}   •   Teste: {te_display}   •   Atleta: {parsed.get('atleta', '—')}   •   Data: {parsed.get('data', '—')}"]
+        else:
+            sublines = [f"Arquivo: {parsed.get('filename', nome_arquivo)}"]
+        header_h = 1.05 * cm + len(sublines) * 0.36 * cm + 0.35 * cm
+
+    hdr_top_y = h - margin
+    body_y_top = hdr_top_y - header_h
+    content_h = body_y_top - margin
+    inner_pad = 0.14 * cm
+
     if n == 4:
-        # 4 blocos: caixa de métricas alta com 4 linhas bem separadas (Pico/Média Esq./Dir./Assim. sem sobrepor)
-        meta_box_h = 1.7 * cm
-        gap = 0.2 * cm
-        title_h = 0.36 * cm
-        block_height = content_h / 2
-        img_h_per = block_height - title_h - gap - meta_box_h - gap
+        block_height = content_h / 2.0
+        title_bar_h = 0.52 * cm
+        gap_chart = 0.12 * cm
         fig_export_height = 340
         scale_img = 2.0
     elif n == 2:
-        meta_box_h = 1.5 * cm
-        gap = 0.35 * cm
-        title_h = 0.5 * cm
-        img_h_per = content_h - title_h - gap - meta_box_h - gap
+        block_height = content_h
+        title_bar_h = 0.55 * cm
+        gap_chart = 0.15 * cm
         fig_export_height = 520
         scale_img = 2.5
-        block_height = content_h
     else:
-        img_h_per = (content_h - 0.4 * cm) / 2 - 1.5 * cm
+        block_height = content_h / 2.0
+        title_bar_h = 0.5 * cm
+        gap_chart = 0.12 * cm
         fig_export_height = 320
         scale_img = 1.8
-        meta_box_h = 1.2 * cm
-        block_height = img_h_per + 0.45 * cm + meta_box_h + 0.35 * cm
-    ap_display = parsed.get("aparelho_display") or format_equip(parsed.get("aparelho", ""))
-    te_display = parsed.get("teste_display") or format_equip(parsed.get("teste", ""))
-    c.setFont("Helvetica-Bold", 14 if n == 4 else 16)
-    c.drawString(margin, h - margin, "Dashboard VALD – Relatório de Teste")
-    c.setFont("Helvetica", 9 if n == 4 else 10)
-    if n == 4 and second_parsed:
-        # Duas linhas de arquivo com espaçamento claro; linha separadora abaixo com folga antes dos gráficos
-        y_sub = h - margin - 0.55 * cm
-        ap2 = second_parsed.get("aparelho_display") or format_equip(second_parsed.get("aparelho", ""))
-        te2 = second_parsed.get("teste_display") or format_equip(second_parsed.get("teste", ""))
-        c.setFillColorRGB(0.35, 0.45, 0.6)
-        c.drawString(margin, y_sub, f"Arquivo 1: {ap_display} • {te_display} • {parsed.get('atleta', '—')} • {parsed.get('data', '—')}")
-        c.drawString(margin, y_sub - 0.42 * cm, f"Arquivo 2: {ap2} • {te2} • {second_parsed.get('atleta', '—')} • {second_parsed.get('data', '—')}")
-        c.setFillColorRGB(0, 0, 0)
-        c.setStrokeColorRGB(0.45, 0.55, 0.72)
-        c.setLineWidth(0.5)
-        c.line(margin, y_sub - 0.42 * cm - 0.5 * cm, w - margin, y_sub - 0.42 * cm - 0.5 * cm)  # linha bem abaixo do Arquivo 2
-    else:
-        y_sub = h - margin - 0.5 * cm
-        if parsed.get("valid"):
-            c.setFillColorRGB(0.35, 0.45, 0.6)
-            c.drawString(margin, y_sub, f"Aparelho: {ap_display}   •   Teste: {te_display}   •   Atleta: {parsed.get('atleta', '—')}   •   Data: {parsed.get('data', '—')}")
-        else:
-            c.drawString(margin, y_sub, f"Arquivo: {parsed.get('filename', nome_arquivo)}")
-        c.setFillColorRGB(0, 0, 0)
-        c.setStrokeColorRGB(0.45, 0.55, 0.72)
-        c.setLineWidth(0.5)
-        c.line(margin, h - margin - 1.0 * cm, w - margin, h - margin - 1.0 * cm)
+
+    # --- Página 1 ---
+    _draw_header_block(c, w, h, margin, hdr_top_y, header_h, "Dashboard VALD – Relatório de Teste", sublines)
+    _draw_body_white(c, margin, margin, content_w, body_y_top)
+
     for idx, (titulo_pagina, fig, metrics, bilateral) in enumerate(all_pages):
         col = idx % ncols
         row = idx // ncols
-        x0 = margin + col * cell_w
-        y0 = y_top - row * block_height
-        c.setFont("Helvetica-Bold", 10 if n == 4 else 11)
-        titulo = titulo_pagina[:48] + ("..." if len(titulo_pagina) > 48 else "")
-        if n == 4:
-            titulo = ("Arq1 — " if idx in (0, 2) else "Arq2 — ") + titulo
-        c.drawString(x0, y0, titulo[:52] + ("..." if len(titulo) > 52 else ""))
-        y0 -= (0.35 if n == 4 else 0.45) * cm
+        x0 = margin + col * cell_w + (inner_pad if n == 4 else inner_pad * 0.5)
+        cw = cell_w - (2 * inner_pad if n == 4 else inner_pad)
+        cell_top = body_y_top - row * block_height - inner_pad
+        cell_bot = cell_top - block_height + 2 * inner_pad
+        if n != 4:
+            cell_top = body_y_top - inner_pad
+            cell_bot = margin + inner_pad
+
+        meta_h = _metrics_heights(bilateral, n)
+        chart_top = cell_top - title_bar_h - gap_chart
+        chart_bot = cell_bot + meta_h + gap_chart
+        chart_h_avail = max(1.0, chart_top - chart_bot)
+        img_h_max = chart_h_avail
+
+        show_badge = n == 4 and second_parsed is not None
+        badge_arq1 = idx in (0, 2)
+        disp_title = titulo_pagina[:48] + ("…" if len(titulo_pagina) > 48 else "")
+
+        _draw_block_title_bar(c, x0, cell_top, cw, title_bar_h, disp_title, show_badge, badge_arq1)
+
         img_buf = io.BytesIO()
         img_ok = False
-        # Cópia da figura para não mutar a original; exportação compatível com cloud (scale=1 primeiro)
         try:
             fig_export = go.Figure(fig.to_dict())
             fig_export.update_layout(height=fig_export_height, margin=dict(t=32, b=28, l=44, r=16))
-            for scale_try in [1, scale_img]:
+            for scale_try in (1, scale_img):
                 try:
                     img_buf.seek(0)
                     img_buf.truncate(0)
@@ -325,91 +537,131 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
                     img_buf.seek(0)
                     img = ImageReader(img_buf)
                     iw, ih = img.getSize()
-                    scale = min((cell_w - 0.2 * cm) / iw, img_h_per / ih)
-                    dw, dh = iw * scale, ih * scale
-                    c.drawImage(img, x0, y0 - dh, width=dw, height=dh)
-                    y0 -= dh + (0.25 if n == 4 else 0.3) * cm
+                    sc = min(cw / iw, img_h_max / ih)
+                    dw, dh = iw * sc, ih * sc
+                    iy = chart_bot + (chart_h_avail - dh) / 2.0
+                    c.drawImage(img, x0, iy, width=dw, height=dh, mask="auto")
                     img_ok = True
                     break
                 except Exception:
                     continue
         except Exception:
             pass
+
         if not img_ok:
             c.setFont("Helvetica", 8)
-            c.setFillColorRGB(0.5, 0.5, 0.5)
-            c.drawString(x0, y0 - 0.3 * cm, "(Gráfico: exportação indisponível neste ambiente)")
-            c.setFillColorRGB(0.15, 0.2, 0.3)
-            y0 -= 0.6 * cm
-        box_y = y0 - meta_box_h
-        box_w = cell_w - 0.2 * cm
-        c.setFillColorRGB(0.94, 0.95, 0.97)
-        c.setStrokeColorRGB(0.6, 0.7, 0.85)
-        c.setLineWidth(0.35)
-        c.roundRect(x0, box_y, box_w, meta_box_h, 4)
-        c.setFillColorRGB(0.15, 0.2, 0.3)
-        c.setStrokeColorRGB(0, 0, 0)
-        pad = 0.2 * cm
+            c.setFillColorRGB(*_hex_rgb(C["muted"]))
+            c.drawString(x0, chart_bot + chart_h_avail * 0.5, "(Gráfico: exportação indisponível neste ambiente)")
+            c.setFillColorRGB(*_hex_rgb(C["text"]))
+
+        box_y = cell_bot
+        box_w = cw
         if bilateral:
-            fs, fv = (9, 10) if n == 4 else (9, 10)
-            # n==4: caixa 1.7cm com 4 faixas bem separadas (rótulo1, valor1, rótulo2, valor2) — zero sobreposição
-            if n == 4:
-                dy1 = 0.34 * cm   # rótulo linha 1 (topo)
-                dy2 = 0.72 * cm   # valor linha 1
-                dy3 = 0.62 * cm   # rótulo linha 2 (acima da base)
-                dy4 = 0.24 * cm   # valor linha 2 (base)
-            else:
-                dy1, dy2, dy3, dy4 = 0.42 * cm, 0.72 * cm, 0.48 * cm, 0.18 * cm
-            c.setFont("Helvetica", fs)
-            for ox, label, val in [(pad, "Pico Esq.", f"{metrics.get('L_peak', 0):.1f}"), (box_w * 0.33, "Pico Dir.", f"{metrics.get('R_peak', 0):.1f}"), (box_w * 0.66, "Assim.(pico)", f"{metrics.get('asym_peak', 0):.1f}%")]:
-                c.drawString(x0 + ox, box_y + meta_box_h - dy1, label)
-                c.setFont("Helvetica-Bold", fv)
-                c.drawString(x0 + ox, box_y + meta_box_h - dy2, val)
-                c.setFont("Helvetica", fs)
-            for ox, label, val in [(pad, "Média Esq.", f"{metrics.get('L_mean', 0):.1f}"), (box_w * 0.33, "Média Dir.", f"{metrics.get('R_mean', 0):.1f}"), (box_w * 0.66, "Assim.(média)", f"{metrics.get('asym_mean', 0):.1f}%")]:
-                c.drawString(x0 + ox, box_y + dy3, label)
-                c.setFont("Helvetica-Bold", fv)
-                c.drawString(x0 + ox, box_y + dy4, val)
-                c.setFont("Helvetica", fs)
+            _draw_metrics_bilateral(c, x0, box_y, box_w, meta_h, metrics)
         else:
-            fs, fv = (9, 10) if n == 4 else (9, 10)
-            c.setFont("Helvetica", fs)
-            if n == 4:
-                c.drawString(x0 + pad, box_y + meta_box_h - 0.6 * cm, "Pico")
-                c.drawString(x0 + pad, box_y + 0.28 * cm, "Média")
-                c.setFont("Helvetica-Bold", fv)
-                c.drawString(x0 + box_w * 0.5, box_y + meta_box_h - 0.6 * cm, f"{metrics.get('peak', 0):.1f}")
-                c.drawString(x0 + box_w * 0.5, box_y + 0.28 * cm, f"{metrics.get('mean', 0):.1f}")
-            else:
-                c.drawString(x0 + pad, box_y + meta_box_h - 0.5 * cm, "Pico")
-                c.drawString(x0 + pad, box_y + 0.2 * cm, "Média")
-                c.setFont("Helvetica-Bold", fv)
-                c.drawString(x0 + box_w * 0.5, box_y + meta_box_h - 0.5 * cm, f"{metrics.get('peak', 0):.1f}")
-                c.drawString(x0 + box_w * 0.5, box_y + 0.2 * cm, f"{metrics.get('mean', 0):.1f}")
-    # Página de comparação (percentuais de diferença)
+            _draw_metrics_unilateral(c, x0, box_y, box_w, meta_h, metrics)
+
+    # --- Página comparação ---
     if comparison_rows:
         c.showPage()
-        c.setFont("Helvetica-Bold", 14)
-        c.drawString(margin, h - margin, "Comparação: diferença % (Arquivo 1 → Arquivo 2)")
-        c.setFont("Helvetica", 9)
-        y = h - margin - 1.0 * cm
-        pad = 0.2 * cm
-        col_w = (content_w - pad * 2) / 4
-        c.drawString(margin, y, "Métrica")
-        c.drawString(margin + col_w, y, "Arquivo 1")
-        c.drawString(margin + col_w * 2, y, "Arquivo 2")
-        c.drawString(margin + col_w * 3, y, "Δ %")
-        y -= 0.5 * cm
-        c.line(margin, y, w - margin, y)
-        y -= 0.45 * cm
-        for label, v1, v2, pct_str in comparison_rows:
-            c.drawString(margin, y, (label or "")[:36])
-            v1_str = f"{v1:.2f}" if isinstance(v1, (int, float)) else (str(v1) if v1 is not None else "—")
-            v2_str = f"{v2:.2f}" if isinstance(v2, (int, float)) else (str(v2) if v2 is not None else "—")
-            c.drawString(margin + col_w, y, v1_str)
-            c.drawString(margin + col_w * 2, y, v2_str)
-            c.drawString(margin + col_w * 3, y, pct_str if pct_str else "—")
-            y -= 0.4 * cm
+        _draw_header_block(c, w, h, margin, hdr_top_y, header_h, "Comparação: diferença % (Arquivo 1 → Arquivo 2)", sublines)
+        _draw_body_white(c, margin, margin, content_w, body_y_top)
+
+        table_top = body_y_top - 0.35 * cm
+        row_h = 0.42 * cm
+        group_hdr_h = 0.5 * cm
+        col_w = content_w / 4.0
+        th_r, th_g, th_b = _hex_rgb(C["table_head"])
+
+        def _draw_table_header(y_baseline):
+            c.setFillColorRGB(th_r, th_g, th_b)
+            c.rect(margin, y_baseline - row_h + 0.08 * cm, content_w, row_h, stroke=0, fill=1)
+            c.setFillColorRGB(1, 1, 1)
+            c.setFont("Helvetica-Bold", 9)
+            c.drawString(margin + 0.2 * cm, y_baseline - 0.22 * cm, "Métrica")
+            c.drawString(margin + col_w + 0.15 * cm, y_baseline - 0.22 * cm, "Arquivo 1")
+            c.drawString(margin + 2 * col_w + 0.15 * cm, y_baseline - 0.22 * cm, "Arquivo 2")
+            c.drawString(margin + 3 * col_w + 0.15 * cm, y_baseline - 0.22 * cm, "Δ %")
+            return y_baseline - row_h - 0.06 * cm
+
+        y = _draw_table_header(table_top)
+
+        def _norm_metric_label(lab):
+            if not lab:
+                return ""
+            s = str(lab)
+            s = s.replace("Assim.(pico)", "Assim. (pico)").replace("Assim.(média)", "Assim. (média)")
+            return s
+
+        groups = []
+        cur = []
+        cur_key = None
+        for row in comparison_rows:
+            label, v1, v2, pct_str = row
+            full = _norm_metric_label(label or "")
+            if " — " in full:
+                gname, mname = full.split(" — ", 1)
+            else:
+                gname, mname = "", full
+            if cur_key is None:
+                cur_key = gname
+            if gname != cur_key and cur:
+                groups.append((cur_key, cur))
+                cur = []
+                cur_key = gname
+            cur.append((mname, v1, v2, pct_str))
+        if cur:
+            groups.append((cur_key, cur))
+
+        zebra = False
+        for gname, grows in groups:
+            gh = group_hdr_h
+            c.setFillColorRGB(*_hex_rgb(C["group_bg"]))
+            c.rect(margin, y - gh + 0.06 * cm, content_w, gh, stroke=0, fill=1)
+            c.setFillColorRGB(*_hex_rgb(C["text"]))
+            c.drawString(margin + 0.25 * cm, y - gh + 0.2 * cm, gname or "Métricas")
+            y -= gh + 0.02 * cm
+            for mname, v1, v2, pct_str in grows:
+                bg = C["zebra"] if zebra else C["body_bg"]
+                c.setFillColorRGB(*_hex_rgb(bg))
+                c.rect(margin, y - row_h + 0.06 * cm, content_w, row_h, stroke=0, fill=1)
+                _stroke_hex("rule")
+                c.setLineWidth(0.3)
+                c.line(margin, y - row_h + 0.06 * cm, margin + content_w, y - row_h + 0.06 * cm)
+
+                c.setFont("Helvetica", 8.5)
+                c.setFillColorRGB(*_hex_rgb(C["text"]))
+                c.drawString(margin + 0.2 * cm, y - 0.24 * cm, (mname or "")[:42])
+
+                v1s = _fmt_num(v1)
+                v2s = _fmt_num(v2)
+                c.drawString(margin + col_w + 0.12 * cm, y - 0.24 * cm, v1s)
+                c.drawString(margin + 2 * col_w + 0.12 * cm, y - 0.24 * cm, v2s)
+
+                pnum = _parse_delta_pct(pct_str)
+                if pnum is None:
+                    try:
+                        pnum = _pct_diff(v1, v2)
+                    except Exception:
+                        pnum = None
+                if pnum is None:
+                    c.setFillColorRGB(*_hex_rgb(C["delta_zero"]))
+                    ds = "—"
+                else:
+                    if pnum > 0:
+                        c.setFillColorRGB(*_hex_rgb(C["delta_pos"]))
+                    elif pnum < 0:
+                        c.setFillColorRGB(*_hex_rgb(C["delta_neg"]))
+                    else:
+                        c.setFillColorRGB(*_hex_rgb(C["delta_zero"]))
+                    ds = f"{pnum:+.1f}%"
+                c.setFont("Helvetica-Bold", 8.5)
+                c.drawString(margin + 3 * col_w + 0.12 * cm, y - 0.24 * cm, ds)
+
+                y -= row_h
+                zebra = not zebra
+            y -= 0.06 * cm
+
     c.save()
     buf.seek(0)
     return buf.read()
