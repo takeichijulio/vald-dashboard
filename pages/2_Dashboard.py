@@ -274,6 +274,19 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
         except (TypeError, ValueError):
             return str(v) if v is not None else "—"
 
+    def _fmt_comp_cell(v, mname):
+        if v is None:
+            return "—"
+        try:
+            fv = float(v)
+            if isinstance(fv, float) and np.isnan(fv):
+                return "—"
+        except (TypeError, ValueError):
+            return "—"
+        if "Assim." in (mname or ""):
+            return f"{fv:.2f}%"
+        return f"{fv:.2f}"
+
     def _parse_delta_pct(pct_str):
         if pct_str is None or (isinstance(pct_str, str) and pct_str.strip() in ("", "—")):
             return None
@@ -360,12 +373,22 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
         y2_lab = box_y + box_h * 0.32
         y2_val = box_y + box_h * 0.14
 
-        def asym_txt(a):
+        ASSIM_WARN = _hex_rgb(C["alert"])
+
+        def _draw_asym_value(px, val_y, a):
+            val_str = f"{a:.2f}%"
+            pad_x = 0.1 * cm
             if abs(a) > 10.0:
-                cnv.setFillColorRGB(*_hex_rgb(C["alert"]))
-                return f"⚠ {a:.2f}%"
-            cnv.setFillColorRGB(*_hex_rgb(C["text"]))
-            return f"{a:.2f}%"
+                rs = 0.22 * cm
+                cnv.setFillColorRGB(*ASSIM_WARN)
+                cnv.rect(px + pad_x, val_y, rs, rs, fill=1, stroke=0)
+                cnv.setFillColorRGB(*ASSIM_WARN)
+                cnv.setFont("Helvetica-Bold", fs_val)
+                cnv.drawString(px + pad_x + rs + 0.08 * cm, val_y, val_str)
+            else:
+                cnv.setFillColorRGB(*_hex_rgb(C["text"]))
+                cnv.setFont("Helvetica-Bold", fs_val)
+                cnv.drawString(px + pad_x, val_y, val_str)
 
         # Coluna esquerda: cabeçalhos PICO / MÉDIA
         _fill_hex("pico_hdr")
@@ -405,15 +428,11 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
         _fill_hex("muted")
         cnv.setFont("Helvetica", fs_lab)
         cnv.drawString(cx2 + 0.1 * cm, y1_lab, "Assim. (pico)")
-        cnv.setFont("Helvetica-Bold", fs_val)
-        s1 = asym_txt(ap)
-        cnv.drawString(cx2 + 0.1 * cm, y1_val, s1)
+        _draw_asym_value(cx2, y1_val, ap)
         _fill_hex("muted")
         cnv.setFont("Helvetica", fs_lab)
         cnv.drawString(cx2 + 0.1 * cm, y2_lab, "Assim. (média)")
-        cnv.setFont("Helvetica-Bold", fs_val)
-        s2 = asym_txt(am)
-        cnv.drawString(cx2 + 0.1 * cm, y2_val, s2)
+        _draw_asym_value(cx2, y2_val, am)
 
         _stroke_hex("rule")
         cnv.setLineWidth(0.8)
@@ -481,19 +500,22 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
     if n == 4:
         block_height = content_h / 2.0
         title_bar_h = 0.52 * cm
-        gap_chart = 0.12 * cm
+        gap_after_title = 0.12 * cm
+        gap_after_metrics = 0.12 * cm
         fig_export_height = 340
         scale_img = 2.0
     elif n == 2:
         block_height = content_h
         title_bar_h = 0.55 * cm
-        gap_chart = 0.15 * cm
+        gap_after_title = 0.15 * cm
+        gap_after_metrics = 0.15 * cm
         fig_export_height = 520
         scale_img = 2.5
     else:
         block_height = content_h / 2.0
         title_bar_h = 0.5 * cm
-        gap_chart = 0.12 * cm
+        gap_after_title = 0.12 * cm
+        gap_after_metrics = 0.12 * cm
         fig_export_height = 320
         scale_img = 1.8
 
@@ -504,19 +526,15 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
     for idx, (titulo_pagina, fig, metrics, bilateral) in enumerate(all_pages):
         col = idx % ncols
         row = idx // ncols
-        x0 = margin + col * cell_w + (inner_pad if n == 4 else inner_pad * 0.5)
-        cw = cell_w - (2 * inner_pad if n == 4 else inner_pad)
-        cell_top = body_y_top - row * block_height - inner_pad
-        cell_bot = cell_top - block_height + 2 * inner_pad
-        if n != 4:
-            cell_top = body_y_top - inner_pad
-            cell_bot = margin + inner_pad
+        x0 = margin + col * cell_w + inner_pad
+        cw = cell_w - 2 * inner_pad
+        cell_top = body_y_top - row * block_height
+        cell_bot = cell_top - block_height
 
         meta_h = _metrics_heights(bilateral, n)
-        chart_top = cell_top - title_bar_h - gap_chart
-        chart_bot = cell_bot + meta_h + gap_chart
-        chart_h_avail = max(1.0, chart_top - chart_bot)
-        img_h_max = chart_h_avail
+        img_h_per = block_height - title_bar_h - gap_after_title - meta_h - gap_after_metrics
+        chart_bot = cell_bot + meta_h + gap_after_metrics
+        img_h_max = max(1.0, img_h_per)
 
         show_badge = n == 4 and second_parsed is not None
         badge_arq1 = idx in (0, 2)
@@ -528,7 +546,35 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
         img_ok = False
         try:
             fig_export = go.Figure(fig.to_dict())
-            fig_export.update_layout(height=fig_export_height, margin=dict(t=32, b=28, l=44, r=16))
+            fig_export.update_traces(selector=dict(name="Esquerda"), line=dict(color="#7aa2f7", width=2))
+            fig_export.update_traces(selector=dict(name="Direita"), line=dict(color="#e0af68", width=2))
+            fig_export.update_layout(
+                template="plotly_white",
+                paper_bgcolor="#ffffff",
+                plot_bgcolor="#f5f7fa",
+                font=dict(color="#1c2738", size=11),
+                xaxis=dict(
+                    gridcolor="#d0d7e3",
+                    linecolor="#8a9ab5",
+                    tickfont=dict(color="#1c2738"),
+                    title_font=dict(color="#1c2738"),
+                ),
+                yaxis=dict(
+                    gridcolor="#d0d7e3",
+                    linecolor="#8a9ab5",
+                    tickfont=dict(color="#1c2738"),
+                    title_font=dict(color="#1c2738"),
+                ),
+                legend=dict(
+                    font=dict(color="#1c2738"),
+                    bgcolor="rgba(255,255,255,0.85)",
+                    bordercolor="#c8d0db",
+                    borderwidth=1,
+                ),
+                title_font=dict(color="#1c2738"),
+                height=fig_export_height,
+                margin=dict(t=32, b=28, l=44, r=16),
+            )
             for scale_try in (1, scale_img):
                 try:
                     img_buf.seek(0)
@@ -539,7 +585,7 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
                     iw, ih = img.getSize()
                     sc = min(cw / iw, img_h_max / ih)
                     dw, dh = iw * sc, ih * sc
-                    iy = chart_bot + (chart_h_avail - dh) / 2.0
+                    iy = chart_bot
                     c.drawImage(img, x0, iy, width=dw, height=dh, mask="auto")
                     img_ok = True
                     break
@@ -551,7 +597,7 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
         if not img_ok:
             c.setFont("Helvetica", 8)
             c.setFillColorRGB(*_hex_rgb(C["muted"]))
-            c.drawString(x0, chart_bot + chart_h_avail * 0.5, "(Gráfico: exportação indisponível neste ambiente)")
+            c.drawString(x0, chart_bot + img_h_max * 0.45, "(Gráfico: exportação indisponível neste ambiente)")
             c.setFillColorRGB(*_hex_rgb(C["text"]))
 
         box_y = cell_bot
@@ -570,7 +616,10 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
         table_top = body_y_top - 0.35 * cm
         row_h = 0.42 * cm
         group_hdr_h = 0.5 * cm
-        col_w = content_w / 4.0
+        col_widths = [content_w * 0.42, content_w * 0.20, content_w * 0.20, content_w * 0.18]
+        x_cols = [margin]
+        for wc in col_widths:
+            x_cols.append(x_cols[-1] + wc)
         th_r, th_g, th_b = _hex_rgb(C["table_head"])
 
         def _draw_table_header(y_baseline):
@@ -578,10 +627,10 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
             c.rect(margin, y_baseline - row_h + 0.08 * cm, content_w, row_h, stroke=0, fill=1)
             c.setFillColorRGB(1, 1, 1)
             c.setFont("Helvetica-Bold", 9)
-            c.drawString(margin + 0.2 * cm, y_baseline - 0.22 * cm, "Métrica")
-            c.drawString(margin + col_w + 0.15 * cm, y_baseline - 0.22 * cm, "Arquivo 1")
-            c.drawString(margin + 2 * col_w + 0.15 * cm, y_baseline - 0.22 * cm, "Arquivo 2")
-            c.drawString(margin + 3 * col_w + 0.15 * cm, y_baseline - 0.22 * cm, "Δ %")
+            c.drawString(x_cols[0] + 0.2 * cm, y_baseline - 0.22 * cm, "Métrica")
+            c.drawString(x_cols[1] + 0.15 * cm, y_baseline - 0.22 * cm, "Arquivo 1")
+            c.drawString(x_cols[2] + 0.15 * cm, y_baseline - 0.22 * cm, "Arquivo 2")
+            c.drawString(x_cols[3] + 0.12 * cm, y_baseline - 0.22 * cm, "Δ %")
             return y_baseline - row_h - 0.06 * cm
 
         y = _draw_table_header(table_top)
@@ -633,10 +682,10 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
                 c.setFillColorRGB(*_hex_rgb(C["text"]))
                 c.drawString(margin + 0.2 * cm, y - 0.24 * cm, (mname or "")[:42])
 
-                v1s = _fmt_num(v1)
-                v2s = _fmt_num(v2)
-                c.drawString(margin + col_w + 0.12 * cm, y - 0.24 * cm, v1s)
-                c.drawString(margin + 2 * col_w + 0.12 * cm, y - 0.24 * cm, v2s)
+                v1s = _fmt_comp_cell(v1, mname)
+                v2s = _fmt_comp_cell(v2, mname)
+                c.drawString(x_cols[1] + 0.12 * cm, y - 0.24 * cm, v1s)
+                c.drawString(x_cols[2] + 0.12 * cm, y - 0.24 * cm, v2s)
 
                 pnum = _parse_delta_pct(pct_str)
                 if pnum is None:
@@ -656,7 +705,7 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
                         c.setFillColorRGB(*_hex_rgb(C["delta_zero"]))
                     ds = f"{pnum:+.1f}%"
                 c.setFont("Helvetica-Bold", 8.5)
-                c.drawString(margin + 3 * col_w + 0.12 * cm, y - 0.24 * cm, ds)
+                c.drawString(x_cols[3] + 0.12 * cm, y - 0.24 * cm, ds)
 
                 y -= row_h
                 zebra = not zebra
@@ -857,8 +906,8 @@ if not modo_unilateral:
         comp_rows = []
         for janela, ma, mb in [(LABEL_1, m1, m1_2), (LABEL_2, m2, m2_2)]:
             for label, k1, k2 in [
-                ("Pico Esq.", "L_peak", "L_peak"), ("Pico Dir.", "R_peak", "R_peak"), ("Assim. (pico) %", "asym_peak", "asym_peak"),
-                ("Média Esq.", "L_mean", "L_mean"), ("Média Dir.", "R_mean", "R_mean"), ("Assim. (média) %", "asym_mean", "asym_mean"),
+                ("Pico Esq.", "L_peak", "L_peak"), ("Pico Dir.", "R_peak", "R_peak"), ("Assim. (pico)", "asym_peak", "asym_peak"),
+                ("Média Esq.", "L_mean", "L_mean"), ("Média Dir.", "R_mean", "R_mean"), ("Assim. (média)", "asym_mean", "asym_mean"),
             ]:
                 v1, v2 = ma.get(k1), mb.get(k2)
                 pct = _pct_diff(v1, v2)
