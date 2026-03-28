@@ -345,8 +345,7 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
 
     def _draw_metrics_bilateral(cnv, x0, box_y, box_w, box_h, metrics):
         third = box_w / 3.0
-        sep_pt = 0.4
-        mid_y = box_y + box_h / 2.0
+        sep_y = box_y + box_h / 2.0
         ap = float(metrics.get("asym_peak", 0) or 0)
         am = float(metrics.get("asym_mean", 0) or 0)
 
@@ -354,19 +353,24 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
             cnv.setFillColorRGB(*_hex_rgb(C[bg_key]))
             cnv.rect(x0 + i * third, box_y, third, box_h, stroke=0, fill=1)
         _stroke_hex("rule")
-        cnv.setLineWidth(sep_pt / 2)
+        cnv.setLineWidth(0.35)
         cnv.line(x0 + third, box_y, x0 + third, box_y + box_h)
         cnv.line(x0 + 2 * third, box_y, x0 + 2 * third, box_y + box_h)
-        cnv.setLineWidth(sep_pt)
-        cnv.line(x0, mid_y, x0 + box_w, mid_y)
+        _stroke_hex("rule")
+        cnv.setLineWidth(0.5)
+        cnv.line(x0, sep_y, x0 + box_w, sep_y)
 
-        fs_lab, fs_val, fs_hdr = 7, 9, 6.5
-        y_pico_hdr = box_y + box_h * 0.88
-        y1_lab = box_y + box_h * 0.68
-        y1_val = box_y + box_h * 0.56
-        y_media_hdr = box_y + box_h * 0.42
-        y2_lab = box_y + box_h * 0.32
-        y2_val = box_y + box_h * 0.14
+        fs_lab, fs_val, fs_hdr = 7.5, 12, 6.5
+        top_card = box_y + box_h
+        header_y_offset = 0.10 * cm
+        label_y_offset = 0.42 * cm
+        value_y_offset = 0.85 * cm
+        y_pico_hdr = top_card - header_y_offset
+        y1_lab = top_card - label_y_offset
+        y1_val = top_card - value_y_offset
+        y_media_hdr = sep_y - header_y_offset
+        y2_lab = sep_y - label_y_offset
+        y2_val = sep_y - value_y_offset
 
         ASSIM_WARN = _hex_rgb(C["alert"])
 
@@ -503,9 +507,9 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
         scale_img = 1.8
 
     title_h = 0.48 * cm
-    metrics_box_h = 1.9 * cm
-    gap = 0.15 * cm
-    img_h_per = block_height - title_h - gap - metrics_box_h
+    metrics_box_h = 2.4 * cm
+    gap_img_metrics = 0.12 * cm
+    img_h_per = block_height - title_h - gap_img_metrics - metrics_box_h
 
     # --- Página 1 ---
     _draw_header_block(c, w, h, margin, hdr_top_y, header_h, "Dashboard VALD – Relatório de Teste", sublines)
@@ -518,13 +522,9 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
         cw = cell_w - 2 * inner_pad
         y0 = body_y_top - row * block_height
         cell_top = y0
-        cell_bot = cell_top - block_height
 
         title_top = cell_top
         img_top = title_top - title_h
-        img_bot = img_top - img_h_per
-        metrics_y = img_bot - gap
-        box_y = metrics_y - metrics_box_h
 
         show_badge = n == 4 and second_parsed is not None
         badge_arq1 = idx in (0, 2)
@@ -535,6 +535,7 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
         fig_export_height = max(280, int(img_h_per * 1.5))
         img_buf = io.BytesIO()
         img_ok = False
+        dw, dh = 0.0, 0.0
         try:
             fig_export = go.Figure(fig.to_dict())
             fig_export.update_traces(selector=dict(name="Esquerda"), line=dict(color="#7aa2f7", width=2))
@@ -589,8 +590,14 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
         if not img_ok:
             c.setFont("Helvetica", 8)
             c.setFillColorRGB(*_hex_rgb(C["muted"]))
-            c.drawString(x0, img_bot + img_h_per * 0.45, "(Gráfico: exportação indisponível neste ambiente)")
+            c.drawString(x0, img_top - img_h_per * 0.55, "(Gráfico: exportação indisponível neste ambiente)")
             c.setFillColorRGB(*_hex_rgb(C["text"]))
+
+        if img_ok:
+            img_bottom = img_top - dh
+            box_y = img_bottom - gap_img_metrics - metrics_box_h
+        else:
+            box_y = img_top - img_h_per - gap_img_metrics - metrics_box_h
 
         box_w = cw
         if bilateral:
