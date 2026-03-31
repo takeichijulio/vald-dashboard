@@ -757,7 +757,8 @@ else:
     </div>
     """, unsafe_allow_html=True)
 
-df = pd.read_csv(uploaded)
+uploaded.seek(0)
+df = pd.read_csv(uploaded, encoding="utf-8", sep=None, engine="python")
 time_col = "Seconds" if "Seconds" in df.columns else df.columns[0]
 l_col = "Left Force" if "Left Force" in df.columns else df.columns[1]
 r_col = "Right Force" if "Right Force" in df.columns else df.columns[2]
@@ -823,7 +824,8 @@ if not modo_unilateral:
         # Dois arquivos: mesma página, duas colunas (Arquivo 1 | Arquivo 2), cada um com sliders próprios e gráficos compactos
         nome_arquivo2 = uploaded2.name if hasattr(uploaded2, "name") else "arquivo2.csv"
         parsed2 = parse_filename(nome_arquivo2)
-        df2 = pd.read_csv(uploaded2)
+        uploaded2.seek(0)
+        df2 = pd.read_csv(uploaded2, encoding="utf-8", sep=None, engine="python")
         time_col2 = "Seconds" if "Seconds" in df2.columns else df2.columns[0]
         l_col2 = "Left Force" if "Left Force" in df2.columns else df2.columns[1]
         r_col2 = "Right Force" if "Right Force" in df2.columns else df2.columns[2]
