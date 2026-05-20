@@ -669,8 +669,8 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
 
         zebra_iv = False
         for iv_label, v1, v2, is_asym in iv_rows:
-            bg_iv = C["zebra"] if zebra_iv else C["body_bg"]
-            _fill_hex(bg_iv)
+            bg_iv_key = "zebra" if zebra_iv else "body_bg"
+            _fill_hex(bg_iv_key)
             c.rect(margin, y_iv - row_h_iv + 0.06 * cm, content_w, row_h_iv, stroke=0, fill=1)
             _stroke_hex("rule")
             c.setLineWidth(0.3)
