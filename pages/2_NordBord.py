@@ -496,11 +496,16 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
     content_h = body_y_top - margin
     inner_pad = 0.14 * cm
 
+    # Modo arquivo único bilateral: reserva espaço para tabela comparativa
+    _COMP_H    = 4.6 * cm   # altura reservada para a tabela
+    _COMP_GAP  = 0.35 * cm  # gap entre gráficos e tabela
+    _single_bilateral = (n == 2 and second_parsed is None)
+
     if n == 4:
         block_height = content_h / 2.0
         scale_img = 2.0
     elif n == 2:
-        block_height = content_h
+        block_height = (content_h - _COMP_H - _COMP_GAP) if _single_bilateral else content_h
         scale_img = 2.5
     else:
         block_height = content_h / 2.0
@@ -512,7 +517,7 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
     img_h_per = block_height - title_h - gap_img_metrics - metrics_box_h
 
     # --- Página 1 ---
-    _draw_header_block(c, w, h, margin, hdr_top_y, header_h, "Dashboard VALD – Relatório de Teste", sublines)
+    _draw_header_block(c, w, h, margin, hdr_top_y, header_h, "NordBord – Relatório de Teste", sublines)
     _draw_body_white(c, margin, margin, content_w, body_y_top)
 
     for idx, (titulo_pagina, fig, metrics, bilateral) in enumerate(all_pages):
@@ -604,6 +609,97 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
             _draw_metrics_bilateral(c, x0, box_y, box_w, metrics_box_h, metrics)
         else:
             _draw_metrics_unilateral(c, x0, box_y, box_w, metrics_box_h, metrics)
+
+    # --- Tabela comparativa dos dois intervalos (arquivo único, bilateral) ---
+    if _single_bilateral and len(all_pages) == 2:
+        lbl1_full = all_pages[0][0]
+        lbl2_full = all_pages[1][0]
+        m_iv1 = all_pages[0][2]
+        m_iv2 = all_pages[1][2]
+        lbl1 = lbl1_full.split(" — ")[0] if " — " in lbl1_full else lbl1_full
+        lbl2 = lbl2_full.split(" — ")[0] if " — " in lbl2_full else lbl2_full
+
+        tbl_top = body_y_top - block_height - _COMP_GAP
+        row_h_iv  = 0.42 * cm
+        grp_h_iv  = 0.48 * cm
+        th_h_iv   = 0.50 * cm
+        cw_iv = [content_w * 0.38, content_w * 0.21, content_w * 0.21, content_w * 0.20]
+        xc_iv = [margin]
+        for _wc in cw_iv:
+            xc_iv.append(xc_iv[-1] + _wc)
+
+        # Faixa de título da seção
+        _fill_hex("group_bg")
+        c.rect(margin, tbl_top - grp_h_iv + 0.06 * cm, content_w, grp_h_iv, stroke=0, fill=1)
+        _fill_hex("text")
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(margin + 0.25 * cm, tbl_top - grp_h_iv + 0.18 * cm,
+                     "Comparativo: Intervalo 1 vs Intervalo 2")
+        y_iv = tbl_top - grp_h_iv
+
+        # Cabeçalho da tabela
+        th_r2, th_g2, th_b2 = _hex_rgb(C["table_head"])
+        c.setFillColorRGB(th_r2, th_g2, th_b2)
+        c.rect(margin, y_iv - th_h_iv + 0.06 * cm, content_w, th_h_iv, stroke=0, fill=1)
+        c.setFillColorRGB(1, 1, 1)
+        c.setFont("Helvetica-Bold", 8.5)
+        c.drawString(xc_iv[0] + 0.2 * cm, y_iv - 0.28 * cm, "Métrica")
+        c.drawString(xc_iv[1] + 0.15 * cm, y_iv - 0.28 * cm, lbl1[:18])
+        c.drawString(xc_iv[2] + 0.15 * cm, y_iv - 0.28 * cm, lbl2[:18])
+        c.drawString(xc_iv[3] + 0.12 * cm, y_iv - 0.28 * cm, "Variação %")
+        y_iv -= th_h_iv + 0.04 * cm
+
+        def _fmt_iv(v, is_asym=False):
+            try:
+                fv = float(v)
+                if np.isnan(fv):
+                    return "—"
+                return f"{fv:.1f}%" if is_asym else f"{fv:.2f}"
+            except Exception:
+                return "—"
+
+        iv_rows = [
+            ("Pico Esq.",      m_iv1.get("L_peak"),    m_iv2.get("L_peak"),    False),
+            ("Pico Dir.",      m_iv1.get("R_peak"),    m_iv2.get("R_peak"),    False),
+            ("Assim. (pico)",  m_iv1.get("asym_peak"), m_iv2.get("asym_peak"), True),
+            ("Média Esq.",     m_iv1.get("L_mean"),    m_iv2.get("L_mean"),    False),
+            ("Média Dir.",     m_iv1.get("R_mean"),    m_iv2.get("R_mean"),    False),
+            ("Assim. (média)", m_iv1.get("asym_mean"), m_iv2.get("asym_mean"), True),
+        ]
+
+        zebra_iv = False
+        for iv_label, v1, v2, is_asym in iv_rows:
+            bg_iv = C["zebra"] if zebra_iv else C["body_bg"]
+            _fill_hex(bg_iv)
+            c.rect(margin, y_iv - row_h_iv + 0.06 * cm, content_w, row_h_iv, stroke=0, fill=1)
+            _stroke_hex("rule")
+            c.setLineWidth(0.3)
+            c.line(margin, y_iv - row_h_iv + 0.06 * cm, margin + content_w, y_iv - row_h_iv + 0.06 * cm)
+
+            c.setFont("Helvetica", 8.5)
+            _fill_hex("text")
+            c.drawString(margin + 0.2 * cm, y_iv - 0.24 * cm, iv_label)
+            c.drawString(xc_iv[1] + 0.12 * cm, y_iv - 0.24 * cm, _fmt_iv(v1, is_asym))
+            c.drawString(xc_iv[2] + 0.12 * cm, y_iv - 0.24 * cm, _fmt_iv(v2, is_asym))
+
+            pnum_iv = None if is_asym else _pct_diff(v1, v2)
+            if pnum_iv is None:
+                c.setFillColorRGB(*_hex_rgb(C["delta_zero"]))
+                ds_iv = "—"
+            elif pnum_iv > 0:
+                c.setFillColorRGB(*_hex_rgb(C["delta_pos"]))
+                ds_iv = f"{pnum_iv:+.1f}%"
+            elif pnum_iv < 0:
+                c.setFillColorRGB(*_hex_rgb(C["delta_neg"]))
+                ds_iv = f"{pnum_iv:+.1f}%"
+            else:
+                c.setFillColorRGB(*_hex_rgb(C["delta_zero"]))
+                ds_iv = "0.0%"
+            c.setFont("Helvetica-Bold", 8.5)
+            c.drawString(xc_iv[3] + 0.12 * cm, y_iv - 0.24 * cm, ds_iv)
+
+            y_iv -= row_h_iv
+            zebra_iv = not zebra_iv
 
     # --- Página comparação ---
     if comparison_rows:

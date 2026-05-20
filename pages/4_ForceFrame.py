@@ -322,7 +322,12 @@ def make_comparison_figure(
 # ---------------------------------------------------------------------------
 # PDF
 # ---------------------------------------------------------------------------
-def build_pdf_forceframe(parsed, pdf_pages, nome_arquivo):
+def build_pdf_forceframe(parsed, pdf_pages, nome_arquivo, summary_metrics=None):
+    """
+    pdf_pages : lista de (titulo, fig, {"peak": N, "mean": N}) — UMA entrada por canal.
+    summary_metrics : {"peak_left", "mean_left", "peak_right", "mean_right",
+                       "asym_peak", "asym_mean"} — exibido na barra de resumo.
+    """
     if not HAS_REPORTLAB:
         return None
 
@@ -332,14 +337,16 @@ def build_pdf_forceframe(parsed, pdf_pages, nome_arquivo):
 
     C = {
         "header_bg": "#1a2332", "header_sub": "#8ab4f8", "accent": "#4a7ac4",
-        "body_bg": "#ffffff",   "text": "#1c2738",       "muted": "#5a6677",
-        "rule": "#c8d0db",      "block_title_bg": "#eef2f7",
-        "col_L": "#dce8ff",     "col_R": "#fff3dc",      "col_A": "#f0f2f5",
-        "pico_hdr": "#4a7ac4",  "alert": "#c0392b",
+        "body_bg":   "#ffffff", "text":       "#1c2738", "muted":  "#5a6677",
+        "rule":      "#c8d0db", "block_title_bg": "#eef2f7",
+        "col_L":     "#dce8ff", "col_R":      "#fff3dc", "col_A":  "#f0f2f5",
+        "col_summary_bg": "#eef2f7",
+        "pico_hdr":  "#4a7ac4", "alert":      "#c0392b",
+        "sum_hdr":   "#1a2332",
     }
 
-    def fill(name): cv.setFillColorRGB(*_hex_rgb(C[name]))
-    def stroke(name): cv.setStrokeColorRGB(*_hex_rgb(C[name]))
+    def _fill(name):  cv.setFillColorRGB(*_hex_rgb(C[name]))
+    def _stroke(name): cv.setStrokeColorRGB(*_hex_rgb(C[name]))
 
     buf = io.BytesIO()
     cv = canvas.Canvas(buf, pagesize=A4)
@@ -347,6 +354,7 @@ def build_pdf_forceframe(parsed, pdf_pages, nome_arquivo):
     mrg = 0.7 * cm
     cw  = w - 2 * mrg
 
+    # ── Cabeçalho ──
     ap = parsed.get("aparelho_display") or format_equip(parsed.get("aparelho", "ForceFrame"))
     te = parsed.get("teste_display")    or format_equip(parsed.get("teste", ""))
     if parsed.get("valid"):
@@ -354,19 +362,18 @@ def build_pdf_forceframe(parsed, pdf_pages, nome_arquivo):
     else:
         sublines = [f"Arquivo: {parsed.get('filename', nome_arquivo)}"]
 
-    hdr_h = 1.05 * cm + len(sublines) * 0.36 * cm + 0.35 * cm
+    hdr_h   = 1.05 * cm + len(sublines) * 0.36 * cm + 0.35 * cm
     hdr_top = h - mrg
     body_top = hdr_top - hdr_h
     content_h = body_top - mrg
 
-    # Cabeçalho
     cv.setFillColorRGB(*_hex_rgb(C["header_bg"]))
     cv.rect(mrg, body_top + 2, cw, hdr_h - 2, stroke=0, fill=1)
     cv.setFillColorRGB(*_hex_rgb(C["accent"]))
     cv.rect(mrg, body_top, cw, 2, stroke=0, fill=1)
     cv.setFillColorRGB(1, 1, 1)
     cv.setFont("Helvetica-Bold", 13)
-    cv.drawString(mrg + 0.35 * cm, hdr_top - 0.45 * cm, "Dashboard VALD – ForceFrame Relatório")
+    cv.drawString(mrg + 0.35 * cm, hdr_top - 0.45 * cm, "ForceFrame – Relatório de Teste")
     cv.setFillColorRGB(*_hex_rgb(C["header_sub"]))
     cv.setFont("Helvetica", 8.5)
     sy = hdr_top - 0.45 * cm - 0.38 * cm
@@ -374,42 +381,43 @@ def build_pdf_forceframe(parsed, pdf_pages, nome_arquivo):
         cv.drawString(mrg + 0.35 * cm, sy, line[:120])
         sy -= 0.36 * cm
 
-    # Fundo branco
     cv.setFillColorRGB(1, 1, 1)
     cv.rect(mrg, mrg, cw, body_top - mrg, stroke=0, fill=1)
 
-    n = len(pdf_pages)
-    ncols = 2
-    cell_w = cw / ncols
+    # ── Dimensões ──
+    SUMBAR_H  = 2.8 * cm   # barra de resumo Esq vs Dir
+    SUMBAR_GAP = 0.3 * cm
+    n         = len(pdf_pages)
+    ncols     = 2
+    cell_w    = cw / ncols
     inner_pad = 0.14 * cm
 
-    if n <= 2:
-        block_h = content_h
-        scale_img = 2.5
-    else:
-        block_h = content_h / 2.0
-        scale_img = 2.0
+    has_summary = summary_metrics is not None
+    block_h = (content_h - SUMBAR_H - SUMBAR_GAP) if has_summary else content_h
+    scale_img = 2.5 if n <= 2 else 2.0
 
-    title_h      = 0.48 * cm
-    metrics_box_h = 1.6 * cm
-    gap          = 0.12 * cm
-    img_h        = block_h - title_h - gap - metrics_box_h
+    title_h   = 0.52 * cm
+    mbox_h    = 1.40 * cm   # métricas simples: 2 células (Pico | Média)
+    gap_im    = 0.12 * cm
+    img_h     = block_h - title_h - gap_im - mbox_h
 
-    for idx, (titulo, fig, metrics) in enumerate(pdf_pages):
+    # ── Gráficos + métricas por canal ──
+    for idx, (titulo, fig, ch_metrics) in enumerate(pdf_pages):
         col = idx % ncols
         row = idx // ncols
         x0  = mrg + col * cell_w + inner_pad
         bcw = cell_w - 2 * inner_pad
         cell_top = body_top - row * block_h
 
-        # Barra de título
-        cv.setFillColorRGB(*_hex_rgb(C["block_title_bg"]))
-        cv.setStrokeColorRGB(*_hex_rgb(C["rule"]))
+        # Barra de título do gráfico
+        _fill("block_title_bg")
+        _stroke("rule")
         cv.setLineWidth(0.6)
-        cv.roundRect(x0 + 0.12 * cm, cell_top - title_h, bcw - 0.24 * cm, title_h, 4, stroke=1, fill=1)
-        cv.setFillColorRGB(*_hex_rgb(C["text"]))
+        cv.roundRect(x0 + 0.1 * cm, cell_top - title_h, bcw - 0.2 * cm, title_h, 4, stroke=1, fill=1)
+        _fill("text")
         cv.setFont("Helvetica-Bold", 9)
-        cv.drawString(x0 + 0.35 * cm, cell_top - title_h + 0.14 * cm, titulo[:52] + ("…" if len(titulo) > 52 else ""))
+        cv.drawString(x0 + 0.32 * cm, cell_top - title_h + 0.16 * cm,
+                      titulo[:54] + ("…" if len(titulo) > 54 else ""))
 
         img_top = cell_top - title_h
         img_buf = io.BytesIO()
@@ -420,24 +428,26 @@ def build_pdf_forceframe(parsed, pdf_pages, nome_arquivo):
             fe.update_layout(
                 template="plotly_white", paper_bgcolor="#ffffff", plot_bgcolor="#f5f7fa",
                 font=dict(color="#1c2738", size=11),
-                xaxis=dict(gridcolor="#d0d7e3", linecolor="#8a9ab5", tickfont=dict(color="#1c2738"), title_font=dict(color="#1c2738")),
-                yaxis=dict(gridcolor="#d0d7e3", linecolor="#8a9ab5", tickfont=dict(color="#1c2738"), title_font=dict(color="#1c2738")),
-                legend=dict(font=dict(color="#1c2738"), bgcolor="rgba(255,255,255,0.85)", bordercolor="#c8d0db", borderwidth=1),
+                xaxis=dict(gridcolor="#d0d7e3", linecolor="#8a9ab5",
+                           tickfont=dict(color="#1c2738"), title_font=dict(color="#1c2738")),
+                yaxis=dict(gridcolor="#d0d7e3", linecolor="#8a9ab5",
+                           tickfont=dict(color="#1c2738"), title_font=dict(color="#1c2738")),
                 title_font=dict(color="#1c2738"),
-                height=max(260, int(img_h * 1.5)),
-                margin=dict(t=28, b=24, l=40, r=12),
+                showlegend=False,
+                height=max(280, int(img_h * 1.6)),
+                margin=dict(t=24, b=28, l=46, r=14),
             )
             for sc in (1, scale_img):
                 try:
                     img_buf.seek(0); img_buf.truncate(0)
                     fe.write_image(img_buf, format="png", scale=sc, engine="kaleido")
                     img_buf.seek(0)
-                    ir  = ImageReader(img_buf)
+                    ir = ImageReader(img_buf)
                     iw, ih = ir.getSize()
-                    slot_w = bcw - 0.15 * cm
+                    slot_w = bcw - 0.1 * cm
                     sc2 = min(slot_w / iw, img_h / ih)
                     dw, dh = iw * sc2, ih * sc2
-                    ix = x0 + (bcw - 0.15 * cm - dw) / 2
+                    ix = x0 + (slot_w - dw) / 2
                     cv.drawImage(ir, ix, img_top - dh, width=dw, height=dh, mask="auto")
                     img_ok = True
                     break
@@ -448,74 +458,109 @@ def build_pdf_forceframe(parsed, pdf_pages, nome_arquivo):
 
         if not img_ok:
             cv.setFont("Helvetica", 8)
-            cv.setFillColorRGB(*_hex_rgb(C["muted"]))
-            cv.drawString(x0, img_top - img_h * 0.55, "(Gráfico indisponível)")
+            _fill("muted")
+            cv.drawString(x0, img_top - img_h * 0.5, "(Gráfico indisponível)")
 
-        box_y = (img_top - dh if img_ok else img_top - img_h) - gap - metrics_box_h
-        bw    = bcw
-        third = bw / 3.0
-        sep_y = box_y + metrics_box_h / 2
+        # Métricas simples: [Pico (N)  |  Média (N)]  — apenas deste canal
+        box_y = (img_top - dh if img_ok else img_top - img_h) - gap_im - mbox_h
+        half  = bcw / 2.0
 
-        for i, bg_key in enumerate(["col_L", "col_R", "col_A"]):
-            cv.setFillColorRGB(*_hex_rgb(C[bg_key]))
-            cv.rect(x0 + i * third, box_y, third, metrics_box_h, stroke=0, fill=1)
-        cv.setStrokeColorRGB(*_hex_rgb(C["rule"]))
+        bg_colors = ["col_L", "col_R"] if col == 0 else ["col_R", "col_L"]
+        for i, bgk in enumerate(bg_colors):
+            cv.setFillColorRGB(*_hex_rgb(C[bgk]))
+            cv.rect(x0 + i * half, box_y, half, mbox_h, stroke=0, fill=1)
+
+        _stroke("rule")
         cv.setLineWidth(0.35)
-        for i in (1, 2):
-            cv.line(x0 + i * third, box_y, x0 + i * third, box_y + metrics_box_h)
-        cv.setLineWidth(0.5)
-        cv.line(x0, sep_y, x0 + bw, sep_y)
-
-        fs_lab, fs_val = 7.0, 11
-
-        def _draw_cell(cx, label_top, val_top, lab, val_str):
-            cv.setFillColorRGB(*_hex_rgb(C["muted"]))
-            cv.setFont("Helvetica", fs_lab)
-            cv.drawString(cx + 0.12 * cm, label_top, lab)
-            cv.setFillColorRGB(*_hex_rgb(C["text"]))
-            cv.setFont("Helvetica-Bold", fs_val)
-            cv.drawString(cx + 0.12 * cm, val_top, val_str)
-
-        top_r = box_y + metrics_box_h
-        y_lab1 = top_r - 0.38 * cm
-        y_val1 = top_r - 0.80 * cm
-        y_lab2 = sep_y  - 0.38 * cm
-        y_val2 = sep_y  - 0.80 * cm
-
-        peak_l = metrics.get("peak_left",  0.0) or 0.0
-        mean_l = metrics.get("mean_left",  0.0) or 0.0
-        peak_r = metrics.get("peak_right", 0.0) or 0.0
-        mean_r = metrics.get("mean_right", 0.0) or 0.0
-        ap_    = metrics.get("asym_peak",  0.0) or 0.0
-        am_    = metrics.get("asym_mean",  0.0) or 0.0
-
-        cv.setFillColorRGB(*_hex_rgb(C["pico_hdr"]))
-        cv.setFont("Helvetica-Bold", 6.5)
-        cv.drawString(x0 + 0.12 * cm, top_r  - 0.10 * cm, "PICO")
-        cv.drawString(x0 + 0.12 * cm, sep_y  - 0.10 * cm, "MEDIA")
-
-        _draw_cell(x0,           y_lab1, y_val1, "Pico Esq.",   f"{peak_l:.1f} N")
-        _draw_cell(x0,           y_lab2, y_val2, "Media Esq.",  f"{mean_l:.1f} N")
-        _draw_cell(x0 + third,   y_lab1, y_val1, "Pico Dir.",   f"{peak_r:.1f} N")
-        _draw_cell(x0 + third,   y_lab2, y_val2, "Media Dir.",  f"{mean_r:.1f} N")
-
-        WARN = _hex_rgb(C["alert"])
-        for (ly, vy, lab, val) in [(y_lab1, y_val1, "Assim.(pico)", ap_), (y_lab2, y_val2, "Assim.(media)", am_)]:
-            cx2 = x0 + 2 * third
-            cv.setFillColorRGB(*_hex_rgb(C["muted"]))
-            cv.setFont("Helvetica", fs_lab)
-            cv.drawString(cx2 + 0.10 * cm, ly, lab)
-            val_str = f"{val:.1f}%"
-            if abs(val) > 10:
-                cv.setFillColorRGB(*WARN)
-            else:
-                cv.setFillColorRGB(*_hex_rgb(C["text"]))
-            cv.setFont("Helvetica-Bold", fs_val)
-            cv.drawString(cx2 + 0.10 * cm, vy, val_str)
-
-        cv.setStrokeColorRGB(*_hex_rgb(C["rule"]))
+        cv.line(x0 + half, box_y, x0 + half, box_y + mbox_h)
         cv.setLineWidth(0.8)
-        cv.roundRect(x0, box_y, bw, metrics_box_h, 3, stroke=1, fill=0)
+        cv.roundRect(x0, box_y, bcw, mbox_h, 3, stroke=1, fill=0)
+
+        peak_v = float(ch_metrics.get("peak", 0) or 0)
+        mean_v = float(ch_metrics.get("mean", 0) or 0)
+
+        lbl_y = box_y + mbox_h - 0.38 * cm
+        val_y = box_y + mbox_h - 0.90 * cm
+
+        _fill("muted")
+        cv.setFont("Helvetica", 7.5)
+        cv.drawString(x0 + 0.18 * cm, lbl_y, "Pico (N)")
+        cv.drawString(x0 + half + 0.18 * cm, lbl_y, "Média (N)")
+
+        _fill("text")
+        cv.setFont("Helvetica-Bold", 13)
+        cv.drawString(x0 + 0.18 * cm, val_y, f"{peak_v:.1f}")
+        cv.drawString(x0 + half + 0.18 * cm, val_y, f"{mean_v:.1f}")
+
+    # ── Barra de resumo Esq vs Dir ──────────────────────────────────────────
+    if has_summary:
+        sm = summary_metrics
+        sum_top = mrg + SUMBAR_H
+        sum_x   = mrg
+
+        # Fundo cinza-azulado
+        cv.setFillColorRGB(*_hex_rgb(C["col_summary_bg"]))
+        cv.rect(sum_x, mrg, cw, SUMBAR_H, stroke=0, fill=1)
+        _stroke("rule")
+        cv.setLineWidth(0.8)
+        cv.roundRect(sum_x, mrg, cw, SUMBAR_H, 4, stroke=1, fill=0)
+
+        # Título da barra
+        cv.setFillColorRGB(*_hex_rgb(C["sum_hdr"]))
+        cv.rect(sum_x, sum_top - 0.52 * cm, cw, 0.52 * cm, stroke=0, fill=1)
+        cv.setFillColorRGB(1, 1, 1)
+        cv.setFont("Helvetica-Bold", 8.5)
+        cv.drawString(sum_x + 0.3 * cm, sum_top - 0.35 * cm, "Resumo: Esquerda vs Direita")
+
+        # 6 células em 2 linhas × 3 colunas
+        cell_data = [
+            # (label, valor, bg_key, linha, coluna)
+            ("Pico Esq. (N)",    sm.get("peak_left",  0), "col_L", 0, 0),
+            ("Pico Dir. (N)",    sm.get("peak_right", 0), "col_R", 0, 1),
+            ("Assim. Pico",      sm.get("asym_peak",  0), "col_A", 0, 2),
+            ("Média Esq. (N)",   sm.get("mean_left",  0), "col_L", 1, 0),
+            ("Média Dir. (N)",   sm.get("mean_right", 0), "col_R", 1, 1),
+            ("Assim. Média",     sm.get("asym_mean",  0), "col_A", 1, 2),
+        ]
+        ncols_sum  = 3
+        nrows_sum  = 2
+        cell_area_h = SUMBAR_H - 0.52 * cm
+        cell_area_y = mrg
+        scell_h  = cell_area_h / nrows_sum
+        scell_w  = cw / ncols_sum
+        ALERT_C  = _hex_rgb(C["alert"])
+
+        for (lbl, val, bgk, row_s, col_s) in cell_data:
+            cx = sum_x + col_s * scell_w
+            cy = cell_area_y + (nrows_sum - 1 - row_s) * scell_h
+
+            cv.setFillColorRGB(*_hex_rgb(C[bgk]))
+            cv.rect(cx, cy, scell_w, scell_h, stroke=0, fill=1)
+
+            _stroke("rule")
+            cv.setLineWidth(0.3)
+            if col_s > 0:
+                cv.line(cx, cy, cx, cy + scell_h)
+            if row_s > 0:
+                cv.line(cx, cy + scell_h, cx + scell_w, cy + scell_h)
+
+            lbl_y_s = cy + scell_h - 0.33 * cm
+            val_y_s = cy + scell_h - 0.85 * cm
+
+            _fill("muted")
+            cv.setFont("Helvetica", 7.0)
+            cv.drawString(cx + 0.18 * cm, lbl_y_s, lbl)
+
+            fval = float(val or 0)
+            is_asym = "Assim" in lbl
+            val_str = f"{fval:.1f}%" if is_asym else f"{fval:.1f}"
+
+            if is_asym and abs(fval) > 10:
+                cv.setFillColorRGB(*ALERT_C)
+            else:
+                _fill("text")
+            cv.setFont("Helvetica-Bold", 13)
+            cv.drawString(cx + 0.18 * cm, val_y_s, val_str)
 
     cv.save()
     buf.seek(0)
@@ -770,9 +815,16 @@ if not HAS_REPORTLAB or not HAS_KALEIDO:
 else:
     fig_l_crop = make_channel_figure_cropped(df, time_col, col_left,  t0_l, t1_l, label_left,  cor_left)
     fig_r_crop = make_channel_figure_cropped(df, time_col, col_right, t0_r, t1_r, label_right, cor_right)
-    fig_ov_crop = make_overview_figure(df, time_col, {k: v for k, v in ALL_CHANNELS.items() if v is not None and v in df.columns}, height=300)
 
-    pdf_metrics = {
+    # Métricas separadas por canal (corrige bug anterior onde ambos recebiam o mesmo dict)
+    pdf_pages = [
+        (f"{label_left} — {t0_l:.2f}s a {t1_l:.2f}s",  fig_l_crop,
+         {"peak": m_l["peak"], "mean": m_l["mean"]}),
+        (f"{label_right} — {t0_r:.2f}s a {t1_r:.2f}s", fig_r_crop,
+         {"peak": m_r["peak"], "mean": m_r["mean"]}),
+    ]
+    # Resumo comparativo Esq vs Dir para a barra inferior do PDF
+    summary_metrics = {
         "peak_left":  m_l["peak"],
         "mean_left":  m_l["mean"],
         "peak_right": m_r["peak"],
@@ -780,12 +832,8 @@ else:
         "asym_peak":  asym_peak,
         "asym_mean":  asym_mean,
     }
-    pdf_pages = [
-        (f"{label_left} — {t0_l:.2f}s a {t1_l:.2f}s",  fig_l_crop,  pdf_metrics),
-        (f"{label_right} — {t0_r:.2f}s a {t1_r:.2f}s", fig_r_crop,  pdf_metrics),
-    ]
 
-    pdf_bytes = build_pdf_forceframe(parsed, pdf_pages, nome_arquivo)
+    pdf_bytes = build_pdf_forceframe(parsed, pdf_pages, nome_arquivo, summary_metrics=summary_metrics)
     if pdf_bytes:
         pdf_filename = nome_arquivo.replace(".csv", "_relatorio.pdf") if nome_arquivo.endswith(".csv") else nome_arquivo + "_relatorio.pdf"
         st.download_button(
