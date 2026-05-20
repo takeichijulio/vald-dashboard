@@ -11,14 +11,27 @@ APARELHOS = [
     ("forceframe", "ForceFrame"),
 ]
 
-TESTES = [
-    ("isoprone", "Isoprone"),
-    ("nordic", "Nordic"),
-    ("iso_30", "ISO 30"),
-    ("knee_extension", "Knee Extension"),
-    ("ankle_plantar_flexion", "Ankle Plantar Flexion"),
-    ("hip_flexion", "Hip Flexion"),
-]
+TESTES_POR_APARELHO = {
+    "nordbord": [
+        ("isoprone", "Isoprone"),
+        ("nordic", "Nordic"),
+        ("iso_30", "ISO 30"),
+        ("knee_extension", "Knee Extension"),
+        ("ankle_plantar_flexion", "Ankle Plantar Flexion"),
+        ("hip_flexion", "Hip Flexion"),
+    ],
+    "forceframe": [
+        ("trace", "Force Trace"),
+        ("isometric", "Isometric"),
+        ("hip_abduction", "Hip Abduction"),
+        ("hip_adduction", "Hip Adduction"),
+        ("knee_extension", "Knee Extension"),
+        ("knee_flexion", "Knee Flexion"),
+        ("shoulder", "Shoulder"),
+    ],
+}
+# fallback para compatibilidade
+TESTES = TESTES_POR_APARELHO["nordbord"]
 
 st.markdown("""
 <style>
@@ -53,10 +66,12 @@ aparelho_key = st.selectbox(
     format_func=lambda x: next((a[1] for a in APARELHOS if a[0] == x), x),
     key="sel_aparelho"
 )
+
+testes_disponiveis = TESTES_POR_APARELHO.get(aparelho_key, TESTES)
 teste_key = st.selectbox(
     "Teste",
-    options=[t[0] for t in TESTES],
-    format_func=lambda x: next((t[1] for t in TESTES if t[0] == x), x),
+    options=[t[0] for t in testes_disponiveis],
+    format_func=lambda x: next((t[1] for t in testes_disponiveis if t[0] == x), x),
     key="sel_teste"
 )
 atleta_nome = st.text_input("Nome do atleta (ex.: Bernardo Germano)", placeholder="Nome Sobrenome", key="nome_atleta")

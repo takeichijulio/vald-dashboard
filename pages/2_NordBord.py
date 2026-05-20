@@ -1,4 +1,4 @@
-# Dashboard VALD – upload, gráficos e métricas
+# NordBord – upload, gráficos e métricas
 import io
 import streamlit as st
 import pandas as pd
@@ -713,7 +713,7 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
     buf.seek(0)
     return buf.read()
 
-st.markdown("# 🏋️ Dashboard VALD – Força Esquerda vs Direita")
+st.markdown("# 🏋️ NordBord – Força Esquerda vs Direita")
 st.markdown("Visualize os testes de contração (curta e longa) e métricas de assimetria.")
 st.markdown("---")
 
