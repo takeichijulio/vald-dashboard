@@ -392,7 +392,7 @@ def _draw_chart_cell(cv, fig, titulo: str, x0, cell_top, cell_w, cell_h, metrics
             yaxis=dict(gridcolor="#d0d7e3", linecolor="#8a9ab5",
                        tickfont=dict(color="#1c2738"), title_font=dict(color="#1c2738")),
             showlegend=False,
-            height=max(240, int(img_h * 42)),
+            height=max(280, int(img_h * 1.6)),
             margin=dict(t=20, b=24, l=42, r=12),
         )
         for sc in (1, 2):
