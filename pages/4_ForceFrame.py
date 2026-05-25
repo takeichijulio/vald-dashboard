@@ -509,7 +509,7 @@ def _draw_delta_mini(cv, mrg, cw, bottom_y, bar_h: float, lado: str,
     cv.setFillColorRGB(1, 1, 1)
     cv.setFont("Helvetica-Bold", 8)
     cv.drawString(mrg + 0.3 * cm, top - 0.30 * cm,
-                  f"Δ {lado}: {label1} → {label2}")
+                  f"Δ {lado}: {label2} (base) → {label1} (novo)")
 
     headers = ["Contração", f"{label1} Pico", f"{label2} Pico", "Δ Pico",
                f"{label1} Média", f"{label2} Média", "Δ Média"]
@@ -534,12 +534,12 @@ def _draw_delta_mini(cv, mrg, cw, bottom_y, bar_h: float, lado: str,
         bg = _PDF_C["row_even"] if i % 2 == 0 else _PDF_C["row_odd"]
         cv.setFillColorRGB(*_hex_rgb(bg))
         cv.rect(mrg, ry, cw, row_h, stroke=0, fill=1)
-        p1 = float(d1.get(f"peak_{key}",  0) or 0)
+        p1 = float(d1.get(f"peak_{key}",  0) or 0)  # Arq1 (novo)
         m1 = float(d1.get(f"mean_{key}",  0) or 0)
-        p2 = float(d2.get(f"peak_{key}",  0) or 0)
+        p2 = float(d2.get(f"peak_{key}",  0) or 0)  # Arq2 (base)
         m2 = float(d2.get(f"mean_{key}",  0) or 0)
-        dp = ((p2 - p1) / max(abs(p1), 1e-9)) * 100
-        dm = ((m2 - m1) / max(abs(m1), 1e-9)) * 100
+        dp = ((p1 - p2) / max(abs(p2), 1e-9)) * 100  # (Arq1-Arq2)/|Arq2|
+        dm = ((m1 - m2) / max(abs(m2), 1e-9)) * 100
         vals = [nome_c, f"{p1:.1f}", f"{p2:.1f}", f"{dp:+.1f}%",
                 f"{m1:.1f}", f"{m2:.1f}", f"{dm:+.1f}%"]
         vy = ry + row_h * 0.28
@@ -747,12 +747,12 @@ def build_pdf_comparison(parsed1: dict, parsed2: dict,
 
         cd1 = data1.get(key, {})
         cd2 = data2.get(key, {})
-        p1 = float(cd1.get("peak", 0) or 0)
+        p1 = float(cd1.get("peak", 0) or 0)  # Arq1 (novo)
         m1 = float(cd1.get("mean", 0) or 0)
-        p2 = float(cd2.get("peak", 0) or 0)
+        p2 = float(cd2.get("peak", 0) or 0)  # Arq2 (base)
         m2 = float(cd2.get("mean", 0) or 0)
-        dp = ((p2 - p1) / max(abs(p1), 1e-9)) * 100
-        dm = ((m2 - m1) / max(abs(m1), 1e-9)) * 100
+        dp = ((p1 - p2) / max(abs(p2), 1e-9)) * 100  # (Arq1-Arq2)/|Arq2|
+        dm = ((m1 - m2) / max(abs(m2), 1e-9)) * 100
         vals = [nome_c, f"{p1:.1f}", f"{p2:.1f}", f"{dp:+.1f}%",
                 f"{m1:.1f}", f"{m2:.1f}", f"{dm:+.1f}%"]
 
@@ -781,7 +781,7 @@ def build_pdf_comparison(parsed1: dict, parsed2: dict,
     leg_y = tbl_top - tbl_h_total - 0.6 * cm
     cv.setFillColorRGB(*_hex_rgb(_PDF_C["muted"]))
     cv.setFont("Helvetica-Oblique", 7.5)
-    cv.drawString(mrg, leg_y, "Δ positivo = Arq 2 maior que Arq 1. Δ negativo = Arq 2 menor.")
+    cv.drawString(mrg, leg_y, "Δ = (Arq1 − Arq2) / |Arq2|. Positivo (verde) = Arq1 maior que Arq2 (evolução). Negativo (vermelho) = regressão.")
 
     cv.save()
     buf.seek(0)
@@ -1232,10 +1232,11 @@ else:
                 st.caption(f"✅ {_ff_sv2.get('_saved_at', '')}")
 
     # Tabela Δ Esquerda
-    dp_ec = ((m_2ec["peak"] - m_1ec["peak"]) / max(abs(m_1ec["peak"]), 1e-9)) * 100
-    dm_ec = ((m_2ec["mean"] - m_1ec["mean"]) / max(abs(m_1ec["mean"]), 1e-9)) * 100
-    dp_el = ((m_2el["peak"] - m_1el["peak"]) / max(abs(m_1el["peak"]), 1e-9)) * 100
-    dm_el = ((m_2el["mean"] - m_1el["mean"]) / max(abs(m_1el["mean"]), 1e-9)) * 100
+    # Δ = (Arq1 - Arq2) / |Arq2| × 100 → Arq1 é o mais recente (referência)
+    dp_ec = ((m_1ec["peak"] - m_2ec["peak"]) / max(abs(m_2ec["peak"]), 1e-9)) * 100
+    dm_ec = ((m_1ec["mean"] - m_2ec["mean"]) / max(abs(m_2ec["mean"]), 1e-9)) * 100
+    dp_el = ((m_1el["peak"] - m_2el["peak"]) / max(abs(m_2el["peak"]), 1e-9)) * 100
+    dm_el = ((m_1el["mean"] - m_2el["mean"]) / max(abs(m_2el["mean"]), 1e-9)) * 100
 
     def _delta_cls(v): return "delta-pos" if v > 0.5 else ("delta-neg" if v < -0.5 else "")
 
@@ -1284,10 +1285,10 @@ else:
             curta2_dir, longa2_dir,
         )
 
-    dp_dc = ((m_2dc["peak"] - m_1dc["peak"]) / max(abs(m_1dc["peak"]), 1e-9)) * 100
-    dm_dc = ((m_2dc["mean"] - m_1dc["mean"]) / max(abs(m_1dc["mean"]), 1e-9)) * 100
-    dp_dl = ((m_2dl["peak"] - m_1dl["peak"]) / max(abs(m_1dl["peak"]), 1e-9)) * 100
-    dm_dl = ((m_2dl["mean"] - m_1dl["mean"]) / max(abs(m_1dl["mean"]), 1e-9)) * 100
+    dp_dc = ((m_1dc["peak"] - m_2dc["peak"]) / max(abs(m_2dc["peak"]), 1e-9)) * 100
+    dm_dc = ((m_1dc["mean"] - m_2dc["mean"]) / max(abs(m_2dc["mean"]), 1e-9)) * 100
+    dp_dl = ((m_1dl["peak"] - m_2dl["peak"]) / max(abs(m_2dl["peak"]), 1e-9)) * 100
+    dm_dl = ((m_1dl["mean"] - m_2dl["mean"]) / max(abs(m_2dl["mean"]), 1e-9)) * 100
 
     st.markdown(f"""
     <table class="delta-table">

@@ -707,7 +707,7 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
     # --- Página comparação ---
     if comparison_rows:
         c.showPage()
-        _draw_header_block(c, w, h, margin, hdr_top_y, header_h, "Comparação: diferença % (Arquivo 1 → Arquivo 2)", sublines)
+        _draw_header_block(c, w, h, margin, hdr_top_y, header_h, "Evolução: Arq2 (base) → Arq1 (mais recente)", sublines)
         _draw_body_white(c, margin, margin, content_w, body_y_top)
 
         table_top = body_y_top - 0.35 * cm
@@ -725,9 +725,9 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
             c.setFillColorRGB(1, 1, 1)
             c.setFont("Helvetica-Bold", 9)
             c.drawString(x_cols[0] + 0.2 * cm, y_baseline - 0.22 * cm, "Métrica")
-            c.drawString(x_cols[1] + 0.15 * cm, y_baseline - 0.22 * cm, "Arquivo 1")
-            c.drawString(x_cols[2] + 0.15 * cm, y_baseline - 0.22 * cm, "Arquivo 2")
-            c.drawString(x_cols[3] + 0.12 * cm, y_baseline - 0.22 * cm, "Δ %")
+            c.drawString(x_cols[1] + 0.15 * cm, y_baseline - 0.22 * cm, "Arq1 (novo)")
+            c.drawString(x_cols[2] + 0.15 * cm, y_baseline - 0.22 * cm, "Arq2 (base)")
+            c.drawString(x_cols[3] + 0.12 * cm, y_baseline - 0.22 * cm, "Evolução")
             return y_baseline - row_h - 0.06 * cm
 
         y = _draw_table_header(table_top)
@@ -784,22 +784,31 @@ def build_pdf(parsed, pages, nome_arquivo, second_parsed=None, second_pages=None
                 c.drawString(x_cols[1] + 0.12 * cm, y - 0.24 * cm, v1s)
                 c.drawString(x_cols[2] + 0.12 * cm, y - 0.24 * cm, v2s)
 
+                is_asym_row = "Assim." in (mname or "")
                 pnum = _parse_delta_pct(pct_str)
                 if pnum is None:
                     try:
-                        pnum = _pct_diff(v1, v2)
+                        if is_asym_row:
+                            a1 = float(v1) if v1 is not None else 0.0
+                            a2 = float(v2) if v2 is not None else 0.0
+                            pnum = abs(a1) - abs(a2)
+                        else:
+                            pnum = _pct_diff(v2, v1)  # (Arq1-Arq2)/|Arq2|
                     except Exception:
                         pnum = None
                 if pnum is None:
                     c.setFillColorRGB(*_hex_rgb(C["delta_zero"]))
                     ds = "—"
                 else:
+                    # For asymmetry: negative = improved (closer to 0) = GREEN
+                    # For force: positive = more force = GREEN
                     if pnum > 0:
-                        c.setFillColorRGB(*_hex_rgb(C["delta_pos"]))
+                        clr = "delta_neg" if is_asym_row else "delta_pos"
                     elif pnum < 0:
-                        c.setFillColorRGB(*_hex_rgb(C["delta_neg"]))
+                        clr = "delta_pos" if is_asym_row else "delta_neg"
                     else:
-                        c.setFillColorRGB(*_hex_rgb(C["delta_zero"]))
+                        clr = "delta_zero"
+                    c.setFillColorRGB(*_hex_rgb(C[clr]))
                     ds = f"{pnum:+.1f}%"
                 c.setFont("Helvetica-Bold", 8.5)
                 c.drawString(x_cols[3] + 0.12 * cm, y - 0.24 * cm, ds)
@@ -1080,16 +1089,29 @@ if not modo_unilateral:
             with _cc2c:
                 if _nb_sv2:
                     st.caption(f"✅ {_nb_sv2.get('_saved_at', '')}")
-        st.markdown("### 📈 Diferença % (Arquivo 1 → Arquivo 2)")
+        st.markdown("### 📈 Evolução: Arq2 (base) → Arq1 (mais recente)")
         comp_rows = []
         for janela, ma, mb in [(LABEL_1, m1, m1_2), (LABEL_2, m2, m2_2)]:
             for label, k1, k2 in [
                 ("Pico Esq.", "L_peak", "L_peak"), ("Pico Dir.", "R_peak", "R_peak"), ("Assim. (pico)", "asym_peak", "asym_peak"),
                 ("Média Esq.", "L_mean", "L_mean"), ("Média Dir.", "R_mean", "R_mean"), ("Assim. (média)", "asym_mean", "asym_mean"),
             ]:
-                v1, v2 = ma.get(k1), mb.get(k2)
-                pct = _pct_diff(v1, v2)
-                pct_str = f"{pct:+.1f}%" if pct is not None else "—"
+                v1, v2 = ma.get(k1), mb.get(k2)  # v1=Arq1(novo), v2=Arq2(base)
+                is_asym = "Assim." in label
+                if is_asym:
+                    # Δ = |asym_novo| - |asym_base| → negativo = melhorou (verde)
+                    try:
+                        a1 = float(v1) if v1 is not None else 0.0
+                        a2 = float(v2) if v2 is not None else 0.0
+                        pct = abs(a1) - abs(a2)
+                        pct_str = f"{pct:+.1f}%"
+                    except (TypeError, ValueError):
+                        pct = None
+                        pct_str = "—"
+                else:
+                    # Δ = (Arq1 - Arq2) / |Arq2| × 100 → positivo = melhorou (verde)
+                    pct = _pct_diff(v2, v1)
+                    pct_str = f"{pct:+.1f}%" if pct is not None else "—"
                 comp_rows.append((f"{janela} — {label}", v1, v2, pct_str))
         second_parsed = parsed2
         fig1_2_crop = make_figure_cropped_bilateral(df2, time_col2, l_col2, r_col2, t0_short_2, t1_short_2, LABEL_1)
@@ -1097,7 +1119,7 @@ if not modo_unilateral:
         second_pages = [(f"{LABEL_1} — Janela {t0_short_2:.2f}s a {t1_short_2:.2f}s", fig1_2_crop, m1_2, True), (f"{LABEL_2} — Janela {t0_long_2:.2f}s a {t1_long_2:.2f}s", fig2_2_crop, m2_2, True)]
         comparison_rows = comp_rows
         st.dataframe(
-            pd.DataFrame(comp_rows, columns=["Métrica", "Arquivo 1", "Arquivo 2", "Δ %"]),
+            pd.DataFrame(comp_rows, columns=["Métrica", "Arq1 (novo)", "Arq2 (base)", "Evolução Arq2→Arq1"]),
             use_container_width=True,
             hide_index=True,
         )
