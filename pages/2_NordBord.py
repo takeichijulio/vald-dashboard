@@ -4,6 +4,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+import windows_store
 
 try:
     from reportlab.lib.pagesizes import A4
@@ -868,6 +871,18 @@ t_max = float(df[time_col].max())
 short_s, short_e = float(np.clip(short_s, t_min, t_max)), float(np.clip(short_e, t_min, t_max))
 long_s, long_e = float(np.clip(long_s, t_min, t_max)), float(np.clip(long_e, t_min, t_max))
 
+# ── Restaurar janelas salvas quando o arquivo muda ───────────────────────────
+if st.session_state.get("_nb_loaded") != nome_arquivo:
+    st.session_state["_nb_loaded"] = nome_arquivo
+    _sv_nb = windows_store.load_windows(nome_arquivo)
+    if _sv_nb:
+        _w_s = (float(_sv_nb.get("short_t0", short_s)), float(_sv_nb.get("short_t1", short_e)))
+        _w_l = (float(_sv_nb.get("long_t0",  long_s)),  float(_sv_nb.get("long_t1",  long_e)))
+        for _k in ("b_short", "u_short_r", "u_short_l"):
+            st.session_state[_k] = _w_s
+        for _k in ("b_long", "u_long_r", "u_long_l"):
+            st.session_state[_k] = _w_l
+
 st.sidebar.caption("Nome do arquivo: **aparelho-teste-nome-sobrenome-export-data.csv**")
 uploaded2 = st.sidebar.file_uploader("Segundo CSV (opcional, para comparar)", type=["csv"], key="upload2")
 st.markdown("### 📊 Contrações e métricas")
@@ -916,6 +931,26 @@ if not modo_unilateral:
                 <div class="m-item"><div class="m-label">Média Dir.</div><div class="m-value">{m2['R_mean']:.2f}</div></div>
                 <div class="m-item"><div class="m-label">Assim. (média)</div><div class="m-value">{m2['asym_mean']:.1f}%</div></div>
             </div>""", unsafe_allow_html=True)
+        # ── Save / carregar janelas ───────────────────────────────────────────
+        st.markdown("---")
+        _nb_sv = windows_store.load_windows(nome_arquivo)
+        _sc1, _sc2, _sc3 = st.columns([1.3, 1.3, 5])
+        with _sc1:
+            if st.button("💾 Salvar janelas", key="nb_save_s", use_container_width=True):
+                windows_store.save_windows(nome_arquivo, {
+                    "short_t0": st.session_state.get("b_short", (short_s, short_e))[0],
+                    "short_t1": st.session_state.get("b_short", (short_s, short_e))[1],
+                    "long_t0":  st.session_state.get("b_long",  (long_s, long_e))[0],
+                    "long_t1":  st.session_state.get("b_long",  (long_s, long_e))[1],
+                })
+                st.success("✅ Salvo!")
+        with _sc2:
+            if _nb_sv and st.button("🗑️ Apagar save", key="nb_del_s", use_container_width=True):
+                windows_store.delete_windows(nome_arquivo)
+                st.info("Save apagado.")
+        with _sc3:
+            if _nb_sv:
+                st.caption(f"✅ Janelas salvas em {_nb_sv.get('_saved_at', '')} — carregadas automaticamente.")
     else:
         # Dois arquivos: mesma página, duas colunas (Arquivo 1 | Arquivo 2), cada um com sliders próprios e gráficos compactos
         nome_arquivo2 = uploaded2.name if hasattr(uploaded2, "name") else "arquivo2.csv"
@@ -936,6 +971,13 @@ if not modo_unilateral:
         short_e_2 = float(np.clip(short_e_2, t_min_2, t_max_2))
         long_s_2 = float(np.clip(long_s_2, t_min_2, t_max_2))
         long_e_2 = float(np.clip(long_e_2, t_min_2, t_max_2))
+        # ── Restaurar janelas salvas do Arq2 ─────────────────────────────────
+        if st.session_state.get("_nb_loaded_2") != nome_arquivo2:
+            st.session_state["_nb_loaded_2"] = nome_arquivo2
+            _sv_nb2 = windows_store.load_windows(nome_arquivo2)
+            if _sv_nb2:
+                st.session_state["b_short_2"] = (float(_sv_nb2.get("short_t0", short_s_2)), float(_sv_nb2.get("short_t1", short_e_2)))
+                st.session_state["b_long_2"]  = (float(_sv_nb2.get("long_t0",  long_s_2)),  float(_sv_nb2.get("long_t1",  long_e_2)))
         H = 260
         col1, col2 = st.columns(2)
         with col1:
@@ -968,6 +1010,26 @@ if not modo_unilateral:
                 <div class="m-item"><div class="m-label">Média Dir.</div><div class="m-value">{m2['R_mean']:.2f}</div></div>
                 <div class="m-item"><div class="m-label">Assim.(média)</div><div class="m-value">{m2['asym_mean']:.1f}%</div></div>
             </div>""", unsafe_allow_html=True)
+            # ── Save Arq1 ────────────────────────────────────────────────────
+            st.markdown("---")
+            _nb_sv1 = windows_store.load_windows(nome_arquivo)
+            _cc1a, _cc1b, _cc1c = st.columns([1.4, 1.4, 3])
+            with _cc1a:
+                if st.button("💾 Salvar Arq1", key="nb_save_c1", use_container_width=True):
+                    windows_store.save_windows(nome_arquivo, {
+                        "short_t0": st.session_state.get("b_short", (short_s, short_e))[0],
+                        "short_t1": st.session_state.get("b_short", (short_s, short_e))[1],
+                        "long_t0":  st.session_state.get("b_long",  (long_s, long_e))[0],
+                        "long_t1":  st.session_state.get("b_long",  (long_s, long_e))[1],
+                    })
+                    st.success("✅ Salvo!")
+            with _cc1b:
+                if _nb_sv1 and st.button("🗑️ Apagar", key="nb_del_c1", use_container_width=True):
+                    windows_store.delete_windows(nome_arquivo)
+                    st.info("Apagado.")
+            with _cc1c:
+                if _nb_sv1:
+                    st.caption(f"✅ {_nb_sv1.get('_saved_at', '')}")
         with col2:
             st.markdown("**📂 Arquivo 2**")
             rng_short_2 = st.slider(f"Janela {LABEL_1} [s]", t_min_2, t_max_2, (short_s_2, short_e_2), step=0.01, key="b_short_2")
@@ -998,6 +1060,26 @@ if not modo_unilateral:
                 <div class="m-item"><div class="m-label">Média Dir.</div><div class="m-value">{m2_2['R_mean']:.2f}</div></div>
                 <div class="m-item"><div class="m-label">Assim.(média)</div><div class="m-value">{m2_2['asym_mean']:.1f}%</div></div>
             </div>""", unsafe_allow_html=True)
+            # ── Save Arq2 ────────────────────────────────────────────────────
+            st.markdown("---")
+            _nb_sv2 = windows_store.load_windows(nome_arquivo2)
+            _cc2a, _cc2b, _cc2c = st.columns([1.4, 1.4, 3])
+            with _cc2a:
+                if st.button("💾 Salvar Arq2", key="nb_save_c2", use_container_width=True):
+                    windows_store.save_windows(nome_arquivo2, {
+                        "short_t0": st.session_state.get("b_short_2", (short_s_2, short_e_2))[0],
+                        "short_t1": st.session_state.get("b_short_2", (short_s_2, short_e_2))[1],
+                        "long_t0":  st.session_state.get("b_long_2",  (long_s_2, long_e_2))[0],
+                        "long_t1":  st.session_state.get("b_long_2",  (long_s_2, long_e_2))[1],
+                    })
+                    st.success("✅ Salvo!")
+            with _cc2b:
+                if _nb_sv2 and st.button("🗑️ Apagar", key="nb_del_c2", use_container_width=True):
+                    windows_store.delete_windows(nome_arquivo2)
+                    st.info("Apagado.")
+            with _cc2c:
+                if _nb_sv2:
+                    st.caption(f"✅ {_nb_sv2.get('_saved_at', '')}")
         st.markdown("### 📈 Diferença % (Arquivo 1 → Arquivo 2)")
         comp_rows = []
         for janela, ma, mb in [(LABEL_1, m1, m1_2), (LABEL_2, m2, m2_2)]:

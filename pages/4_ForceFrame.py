@@ -6,6 +6,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+import windows_store
 
 try:
     from reportlab.lib.pagesizes import A4
@@ -960,6 +963,22 @@ if col_right1 is None or col_right1 not in df1.columns:
 curta1_esq, longa1_esq = suggest_two_windows(t_arr1, df1[col_left1].to_numpy())
 curta1_dir, longa1_dir = suggest_two_windows(t_arr1, df1[col_right1].to_numpy())
 
+# ── Restaurar janelas salvas quando o arquivo muda ───────────────────────────
+if st.session_state.get("_ff1_loaded") != nome1:
+    st.session_state["_ff1_loaded"] = nome1
+    _sv_ff1 = windows_store.load_windows(nome1)
+    if _sv_ff1:
+        # Modo simples
+        st.session_state["ff_esq_curta"] = (float(_sv_ff1.get("esq_curta_t0", curta1_esq[0])), float(_sv_ff1.get("esq_curta_t1", curta1_esq[1])))
+        st.session_state["ff_esq_longa"] = (float(_sv_ff1.get("esq_longa_t0", longa1_esq[0])), float(_sv_ff1.get("esq_longa_t1", longa1_esq[1])))
+        st.session_state["ff_dir_curta"] = (float(_sv_ff1.get("dir_curta_t0", curta1_dir[0])), float(_sv_ff1.get("dir_curta_t1", curta1_dir[1])))
+        st.session_state["ff_dir_longa"] = (float(_sv_ff1.get("dir_longa_t0", longa1_dir[0])), float(_sv_ff1.get("dir_longa_t1", longa1_dir[1])))
+        # Modo comparativo – mesmas janelas para as chaves de Arq1
+        st.session_state["ff_cmp_a1e_curta"] = st.session_state["ff_esq_curta"]
+        st.session_state["ff_cmp_a1e_longa"] = st.session_state["ff_esq_longa"]
+        st.session_state["ff_cmp_a1d_curta"] = st.session_state["ff_dir_curta"]
+        st.session_state["ff_cmp_a1d_longa"] = st.session_state["ff_dir_longa"]
+
 render_file_info(parsed1, prefix="Arq 1" if MODO_COMP else "")
 
 # ── Visão geral Arquivo 1 ─────────────────────────────────────────────────────
@@ -1028,6 +1047,31 @@ if not MODO_COMP:
         else:
             st.success(f"✅ Assim. **{label_asym}** aceitável: **{asym_val:.1f}%**.")
 
+    # ── Salvar janelas ────────────────────────────────────────────────────────
+    st.markdown("---")
+    _ff_sv = windows_store.load_windows(nome1)
+    _fsc1, _fsc2, _fsc3 = st.columns([1.3, 1.3, 5])
+    with _fsc1:
+        if st.button("💾 Salvar janelas", key="ff_save_s", use_container_width=True):
+            windows_store.save_windows(nome1, {
+                "esq_curta_t0": st.session_state.get("ff_esq_curta", curta1_esq)[0],
+                "esq_curta_t1": st.session_state.get("ff_esq_curta", curta1_esq)[1],
+                "esq_longa_t0": st.session_state.get("ff_esq_longa", longa1_esq)[0],
+                "esq_longa_t1": st.session_state.get("ff_esq_longa", longa1_esq)[1],
+                "dir_curta_t0": st.session_state.get("ff_dir_curta", curta1_dir)[0],
+                "dir_curta_t1": st.session_state.get("ff_dir_curta", curta1_dir)[1],
+                "dir_longa_t0": st.session_state.get("ff_dir_longa", longa1_dir)[0],
+                "dir_longa_t1": st.session_state.get("ff_dir_longa", longa1_dir)[1],
+            })
+            st.success("✅ Salvo!")
+    with _fsc2:
+        if _ff_sv and st.button("🗑️ Apagar save", key="ff_del_s", use_container_width=True):
+            windows_store.delete_windows(nome1)
+            st.info("Save apagado.")
+    with _fsc3:
+        if _ff_sv:
+            st.caption(f"✅ Janelas salvas em {_ff_sv.get('_saved_at', '')} — carregadas automaticamente.")
+
     # ── Exportar PDF ──────────────────────────────────────────────────────────
     st.markdown("---")
     st.markdown("### 📄 Exportar Relatório em PDF")
@@ -1091,6 +1135,16 @@ else:
     curta2_esq, longa2_esq = suggest_two_windows(t_arr2, df2[col_left2].to_numpy())
     curta2_dir, longa2_dir = suggest_two_windows(t_arr2, df2[col_right2].to_numpy())
 
+    # ── Restaurar janelas salvas do Arq2 ──────────────────────────────────────
+    if st.session_state.get("_ff2_loaded") != nome2:
+        st.session_state["_ff2_loaded"] = nome2
+        _sv_ff2 = windows_store.load_windows(nome2)
+        if _sv_ff2:
+            st.session_state["ff_cmp_a2e_curta"] = (float(_sv_ff2.get("esq_curta_t0", curta2_esq[0])), float(_sv_ff2.get("esq_curta_t1", curta2_esq[1])))
+            st.session_state["ff_cmp_a2e_longa"] = (float(_sv_ff2.get("esq_longa_t0", longa2_esq[0])), float(_sv_ff2.get("esq_longa_t1", longa2_esq[1])))
+            st.session_state["ff_cmp_a2d_curta"] = (float(_sv_ff2.get("dir_curta_t0", curta2_dir[0])), float(_sv_ff2.get("dir_curta_t1", curta2_dir[1])))
+            st.session_state["ff_cmp_a2d_longa"] = (float(_sv_ff2.get("dir_longa_t0", longa2_dir[0])), float(_sv_ff2.get("dir_longa_t1", longa2_dir[1])))
+
     render_file_info(parsed2, prefix="Arq 2")
 
     ch_map2 = {k: v for k, v in {
@@ -1120,6 +1174,30 @@ else:
             "Esq Arq1", "ff_cmp_a1e",
             curta1_esq, longa1_esq,
         )
+        # Save Arq1
+        st.markdown("---")
+        _ff_sv1 = windows_store.load_windows(nome1)
+        _f1a, _f1b, _f1c = st.columns([1.3, 1.3, 3])
+        with _f1a:
+            if st.button("💾 Salvar Arq1", key="ff_cmp_save1", use_container_width=True):
+                windows_store.save_windows(nome1, {
+                    "esq_curta_t0": st.session_state.get("ff_cmp_a1e_curta", curta1_esq)[0],
+                    "esq_curta_t1": st.session_state.get("ff_cmp_a1e_curta", curta1_esq)[1],
+                    "esq_longa_t0": st.session_state.get("ff_cmp_a1e_longa", longa1_esq)[0],
+                    "esq_longa_t1": st.session_state.get("ff_cmp_a1e_longa", longa1_esq)[1],
+                    "dir_curta_t0": st.session_state.get("ff_cmp_a1d_curta", curta1_dir)[0],
+                    "dir_curta_t1": st.session_state.get("ff_cmp_a1d_curta", curta1_dir)[1],
+                    "dir_longa_t0": st.session_state.get("ff_cmp_a1d_longa", longa1_dir)[0],
+                    "dir_longa_t1": st.session_state.get("ff_cmp_a1d_longa", longa1_dir)[1],
+                })
+                st.success("✅ Salvo!")
+        with _f1b:
+            if _ff_sv1 and st.button("🗑️ Apagar", key="ff_cmp_del1", use_container_width=True):
+                windows_store.delete_windows(nome1)
+                st.info("Apagado.")
+        with _f1c:
+            if _ff_sv1:
+                st.caption(f"✅ {_ff_sv1.get('_saved_at', '')}")
 
     with col_a2e:
         st.markdown(f"**Arq 2** – {arq2_lbl}")
@@ -1128,6 +1206,30 @@ else:
             "Esq Arq2", "ff_cmp_a2e",
             curta2_esq, longa2_esq,
         )
+        # Save Arq2
+        st.markdown("---")
+        _ff_sv2 = windows_store.load_windows(nome2)
+        _f2a, _f2b, _f2c = st.columns([1.3, 1.3, 3])
+        with _f2a:
+            if st.button("💾 Salvar Arq2", key="ff_cmp_save2", use_container_width=True):
+                windows_store.save_windows(nome2, {
+                    "esq_curta_t0": st.session_state.get("ff_cmp_a2e_curta", curta2_esq)[0],
+                    "esq_curta_t1": st.session_state.get("ff_cmp_a2e_curta", curta2_esq)[1],
+                    "esq_longa_t0": st.session_state.get("ff_cmp_a2e_longa", longa2_esq)[0],
+                    "esq_longa_t1": st.session_state.get("ff_cmp_a2e_longa", longa2_esq)[1],
+                    "dir_curta_t0": st.session_state.get("ff_cmp_a2d_curta", curta2_dir)[0],
+                    "dir_curta_t1": st.session_state.get("ff_cmp_a2d_curta", curta2_dir)[1],
+                    "dir_longa_t0": st.session_state.get("ff_cmp_a2d_longa", longa2_dir)[0],
+                    "dir_longa_t1": st.session_state.get("ff_cmp_a2d_longa", longa2_dir)[1],
+                })
+                st.success("✅ Salvo!")
+        with _f2b:
+            if _ff_sv2 and st.button("🗑️ Apagar", key="ff_cmp_del2", use_container_width=True):
+                windows_store.delete_windows(nome2)
+                st.info("Apagado.")
+        with _f2c:
+            if _ff_sv2:
+                st.caption(f"✅ {_ff_sv2.get('_saved_at', '')}")
 
     # Tabela Δ Esquerda
     dp_ec = ((m_2ec["peak"] - m_1ec["peak"]) / max(abs(m_1ec["peak"]), 1e-9)) * 100
