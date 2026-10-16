@@ -23,6 +23,7 @@ build/
 .DS_Store
 Thumbs.db
 
-# Dados locais (opcional – descomente se não quiser subir CSVs de teste)
-# *.csv
-# sub17/
+# Dados e arquivos locais de atletas nunca devem ser versionados
+saved_windows.json
+*.csv
+*.xlsx
