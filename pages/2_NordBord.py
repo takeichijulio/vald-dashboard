@@ -26,7 +26,7 @@ except ImportError:
 st.set_page_config(page_title="VALD / NordBord Trace Viewer", layout="wide", initial_sidebar_state="expanded")
 
 PADRAO_NOME = "**aparelho-teste-nome-sobrenome-export-data.csv**"
-EXEMPLO_NOME = "nordbord-isoprone-Bernardo-Germano-export-19_02_2026.csv"
+EXEMPLO_NOME = "nordbord-isoprone-Atleta-Exemplo-export-08_03_2025.csv"
 
 def format_equip(name: str) -> str:
     return (name or "").strip().upper().replace("_", " ")
