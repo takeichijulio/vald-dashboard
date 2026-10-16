@@ -57,7 +57,7 @@ st.markdown("""
 <li>Ajuste os sliders de <strong>início e fim</strong> para delimitar a janela de melhor esforço.</li>
 <li>Veja as métricas e assimetria abaixo de cada gráfico e exporte o relatório em PDF.</li>
 </ol>
-<p><strong>Dica:</strong> Para identificação automática do atleta e do teste, use o nome no formato: <code>aparelho-teste-nome-sobrenome-export-data.csv</code> (ex.: nordbord-isoprone-Bernardo-Germano-export-19_02_2026.csv).</p>
+<p><strong>Dica:</strong> Para identificação automática do atleta e do teste, use o nome no formato: <code>aparelho-teste-nome-sobrenome-export-data.csv</code> (ex.: nordbord-isoprone-Atleta-Exemplo-export-08_03_2025.csv).</p>
 </div>
 """, unsafe_allow_html=True)
 
