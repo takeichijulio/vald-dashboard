@@ -74,7 +74,7 @@ teste_key = st.selectbox(
     format_func=lambda x: next((t[1] for t in testes_disponiveis if t[0] == x), x),
     key="sel_teste"
 )
-atleta_nome = st.text_input("Nome do atleta (ex.: Bernardo Germano)", placeholder="Nome Sobrenome", key="nome_atleta")
+atleta_nome = st.text_input("Nome do atleta (ex.: Atleta Exemplo)", placeholder="Nome Sobrenome", key="nome_atleta")
 if atleta_nome and atleta_nome.strip():
     atleta_slug = "-".join(atleta_nome.strip().split())
 else:
